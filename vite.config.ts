@@ -34,7 +34,7 @@ function contentSecurityPolicyPlugin(): Plugin {
 }
 
 export default defineConfig({
-  base: process.env.BASE_PATH ?? '/home-loan-dashboard/',
+  base: process.env.BASE_PATH ?? '/paydown/',
   plugins: [react(), tailwindcss(), contentSecurityPolicyPlugin()],
   build: {
     rolldownOptions: {

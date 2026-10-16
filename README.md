@@ -117,13 +117,13 @@ This repo includes `.github/workflows/deploy-pages.yml` for GitHub Pages deploym
 The Vite base path is already set in `vite.config.ts`:
 
 ```ts
-base: process.env.BASE_PATH ?? '/home-loan-dashboard/';
+base: process.env.BASE_PATH ?? '/paydown/';
 ```
 
 That matches the default project Pages URL:
 
 ```text
-https://<owner>.github.io/home-loan-dashboard/
+https://<owner>.github.io/paydown/
 ```
 
 If this repo is deployed as an organization/user Pages site, or behind a custom domain at the domain root, set `BASE_PATH=/` in the workflow and update `vite.config.ts` defaults if needed.
