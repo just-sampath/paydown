@@ -1,127 +1,103 @@
-import { act, type ReactElement } from 'react';
-import { createRoot } from 'react-dom/client';
 import { describe, expect, test, vi } from 'vitest';
 
 import { sampleLoan } from '../../src/config/sampleLoan';
-import { buildLoanAnalysis } from '../../src/features/loan/loanEngine';
+import { buildLoanAnalysis, type PartPayment } from '../../src/features/loan/loanEngine';
 import { PartPaymentsPage } from '../../src/pages/PartPaymentsPage';
+import { blur, buttonByText, click, focus, render, setInputValue } from '../render';
 
 const analysis = buildLoanAnalysis(sampleLoan.loan, '2026-07-02');
+const payments = sampleLoan.loan.partPayments;
 
-type RenderResult = {
-  container: HTMLDivElement;
-  cleanup: () => void;
-};
-
-function render(component: ReactElement): RenderResult {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
-
-  act(() => {
-    root.render(component);
-  });
-
-  return {
-    container,
-    cleanup: () => {
-      act(() => {
-        root.unmount();
-      });
-      container.remove();
-    },
-  };
+function page(onChange: (partPayments: PartPayment[]) => void) {
+  return <PartPaymentsPage analysis={analysis} onChange={onChange} partPayments={payments} />;
 }
 
-function setInputValue(input: HTMLInputElement, value: string): void {
-  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-
-  act(() => {
-    setter?.call(input, value);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  });
+function amountInput(container: HTMLElement): HTMLInputElement {
+  return container.querySelector(
+    'input[aria-label="Amount of part payment 1"]',
+  ) as HTMLInputElement;
 }
 
-describe('PartPaymentsPage inputs', () => {
-  test('labels lifetime savings and exposes simple-interest charges', () => {
-    const { container, cleanup } = render(
-      <PartPaymentsPage
-        analysis={analysis}
-        partPayments={sampleLoan.loan.partPayments}
-        onChange={() => undefined}
-      />,
-    );
+describe('part payments page', () => {
+  test('shows what each rupee saved and the interest charged on part payments', () => {
+    const { container, cleanup } = render(page(() => undefined));
+    const text = container.textContent ?? '';
 
-    expect(container.textContent).toContain('Lifetime saving ratio');
-    expect(container.textContent).toContain('Simple interest');
-    expect(container.textContent).toContain('3.88×');
-    expect(container.textContent).not.toContain('Effective ROI');
+    expect(text).toContain('Saved per ₹1');
+    expect(text).toContain('₹3.88');
+    expect(text).toContain('Best value');
+    expect(text).toContain('Feb 2024');
+    expect(text).toContain('This payment saved the most interest for each rupee paid');
+    expect(text).toContain('Part-payment interest');
+    expect(text).toContain('All 3 payments');
+    expect(text).not.toContain('Effective ROI');
+    expect(text.split('₹3.88').length - 1).toBe(1);
+    expect(text.split('₹1,040').length - 1).toBe(1);
     cleanup();
   });
 
-  test('does not crash or propagate when the amount is cleared or set to 0', () => {
-    const onChange = vi.fn();
-    const { container, cleanup } = render(
-      <PartPaymentsPage
-        analysis={analysis}
-        partPayments={sampleLoan.loan.partPayments}
-        onChange={onChange}
-      />,
-    );
+  test('shows amounts with Indian grouping until the field is edited', () => {
+    const { container, cleanup } = render(page(() => undefined));
+    const input = amountInput(container);
 
-    const amountInput = container.querySelector('input[type="number"]') as HTMLInputElement;
-    expect(amountInput).toBeTruthy();
-
-    setInputValue(amountInput, '0');
-    expect(onChange).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('Prepayment ledger');
-
-    setInputValue(amountInput, '');
-    expect(onChange).not.toHaveBeenCalled();
-    expect(amountInput.value).toBe('');
-
+    expect(input.value).toBe('1,25,000');
+    focus(input);
+    expect(input.value).toBe('125000');
     cleanup();
   });
 
-  test('propagates only a valid positive amount', () => {
+  test('does not propagate a cleared amount or one below ₹1', () => {
     const onChange = vi.fn();
-    const { container, cleanup } = render(
-      <PartPaymentsPage
-        analysis={analysis}
-        partPayments={sampleLoan.loan.partPayments}
-        onChange={onChange}
-      />,
-    );
+    const { container, cleanup } = render(page(onChange));
+    const input = amountInput(container);
 
-    const amountInput = container.querySelector('input[type="number"]') as HTMLInputElement;
+    focus(input);
+    setInputValue(input, '0');
+    expect(container.textContent).toContain('Enter an amount of at least ₹1.');
+    setInputValue(input, '');
+    expect(onChange).not.toHaveBeenCalled();
+    expect(input.value).toBe('');
 
-    setInputValue(amountInput, '999999');
+    blur(input);
+    expect(input.value).toBe('1,25,000');
+    cleanup();
+  });
+
+  test('propagates a valid amount, with or without commas', () => {
+    const onChange = vi.fn();
+    const { container, cleanup } = render(page(onChange));
+    const input = amountInput(container);
+
+    focus(input);
+    setInputValue(input, '9,99,999');
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith(
       expect.arrayContaining([expect.objectContaining({ amount: 999999 })]),
     );
-
     cleanup();
   });
 
-  test('does not crash or propagate when the date is cleared', () => {
+  test('does not propagate a cleared date', () => {
     const onChange = vi.fn();
-    const { container, cleanup } = render(
-      <PartPaymentsPage
-        analysis={analysis}
-        partPayments={sampleLoan.loan.partPayments}
-        onChange={onChange}
-      />,
-    );
+    const { container, cleanup } = render(page(onChange));
+    const date = container.querySelector('input[type="date"]') as HTMLInputElement;
 
-    const dateInput = container.querySelector('input[type="date"]') as HTMLInputElement;
-    expect(dateInput).toBeTruthy();
-
-    setInputValue(dateInput, '');
+    focus(date);
+    setInputValue(date, '');
+    blur(date);
     expect(onChange).not.toHaveBeenCalled();
-    expect(dateInput.value).toBe('');
-    expect(container.textContent).toContain('Prepayment ledger');
+    expect(date.value).toBe(payments[0]?.date);
+    cleanup();
+  });
 
+  test('adds a payment from the form', () => {
+    const onChange = vi.fn();
+    const { container, cleanup } = render(page(onChange));
+
+    setInputValue(container.querySelector('#new-payment-value') as HTMLInputElement, '50,000');
+    click(buttonByText(container, 'Add part payment'));
+
+    expect(onChange).toHaveBeenCalledWith([...payments, { date: '2026-08-01', amount: 50_000 }]);
     cleanup();
   });
 });

@@ -1,369 +1,157 @@
-import { ArrowUpRight, Check, X } from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
-
 import type { LoanAnalysis } from '../features/loan/loanEngine';
-import {
-  buildPaidProgress,
-  type PaidProgress,
-  type ProgressMeter,
-} from '../features/loan/progressBreakdown';
-import { formatDuration, formatInrShort, formatMonthYear } from '../utils/format';
+import { buildPaidProgress, type ProgressMeter } from '../features/loan/progressBreakdown';
+import { formatInrShort } from '../utils/format';
 
 type PaidProgressPanelProps = {
   analysis: LoanAnalysis;
 };
 
+type Segment = { key: string; amount: number; color: string };
+
 /**
- * Shows the original principal as one loan journey and reveals the accounting
- * detail only when the user asks for it.
+ * Where the money stands today: principal, interest, and everything paid, each split into
+ * paid so far and still to pay, with the whole-loan total on the current plan.
+ *
+ * Each figure appears once on the dashboard, so this card is the only place that shows
+ * the amount still owed, the interest paid, and the lifetime totals.
+ *
+ * @param props - Panel props.
+ * @param props.analysis - Loan analysis for today.
+ * @returns Loan progress card.
  */
 export function PaidProgressPanel({ analysis }: PaidProgressPanelProps) {
   const progress = buildPaidProgress(analysis);
-  const [open, setOpen] = useState(false);
-  const titleId = useId();
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
-  const principalPercent = percent(progress.principal.filled, progress.principal.total);
-
-  useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    const trigger = triggerRef.current;
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        setOpen(false);
-      }
-    };
-
-    document.body.style.overflow = 'hidden';
-    document.addEventListener('keydown', onKeyDown);
-    closeRef.current?.focus();
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener('keydown', onKeyDown);
-      trigger?.focus();
-    };
-  }, [open]);
+  const { principal, interest, cash } = progress;
+  const emiPrincipal = amountFor(principal, 'emi-principal');
+  const partPayments = amountFor(principal, 'part-payments');
+  const interestOutsideEmis = amountFor(cash, 'extra-interest');
+  const principalSegment: Segment = {
+    key: 'emi-principal',
+    amount: emiPrincipal,
+    color: 'var(--c-principal)',
+  };
+  const partPaymentSegment: Segment = {
+    key: 'part-payments',
+    amount: partPayments,
+    color: 'var(--c-prepay)',
+  };
+  const interestSegment: Segment = {
+    key: 'interest',
+    amount: interest.filled,
+    color: 'var(--c-interest)',
+  };
 
   return (
-    <section className="card loan-progress-card mt-6">
-      <button
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        className="loan-progress-trigger"
-        data-loan-progress-trigger=""
-        ref={triggerRef}
-        type="button"
-        onClick={() => setOpen(true)}
-      >
-        <div className="loan-progress-topline">
+    <section className="card" aria-labelledby="loan-progress-title">
+      <div className="card-head">
+        <div className="min-w-0">
           <div className="label">Loan progress</div>
-          <span className="loan-progress-action">
-            View breakdown <ArrowUpRight aria-hidden="true" size={17} />
-          </span>
+          <h2 id="loan-progress-title">
+            {percent(principal.filled, principal.total).toFixed(1)}% of the principal is repaid
+          </h2>
+          <p>What you have paid so far, what is still to come, and the whole loan.</p>
         </div>
+      </div>
 
-        <div className="loan-progress-summary">
-          <ProgressFigure label="Original loan" value={formatInrShort(progress.principal.total)} />
-          <ProgressFigure
-            accent="positive"
-            detail={`${principalPercent.toFixed(1)}% repaid`}
-            label="Repaid"
-            value={formatInrShort(progress.principal.filled)}
-          />
-          <ProgressFigure
-            accent="remaining"
-            detail={`${analysis.remainingPaymentCount} payments left`}
-            label="Left"
-            value={formatInrShort(progress.principal.remaining)}
-          />
-        </div>
-
-        <PrincipalTrack meter={progress.principal} />
-
-        <div className="loan-progress-footer">
-          <span>
-            <Check aria-hidden="true" size={15} />
-            Includes {formatInrShort(progress.prepaid.filled)} in part payments
-          </span>
-          <span>
-            {formatInrShort(progress.cash.remaining)} scheduled through{' '}
-            {formatMonthYear(analysis.actual.summary.payoffDate)}
-          </span>
-        </div>
-      </button>
-
-      {open ? (
-        <LoanBreakdownDialog
-          analysis={analysis}
-          closeRef={closeRef}
-          progress={progress}
-          titleId={titleId}
-          onClose={() => setOpen(false)}
+      <div className="meters">
+        <Meter
+          leftLabel="Still owed"
+          meter={principal}
+          name="Principal"
+          paidLabel="repaid"
+          segments={[principalSegment, partPaymentSegment]}
+          totalLabel="Borrowed"
         />
-      ) : null}
+        <Meter
+          leftLabel="Still to come"
+          meter={interest}
+          name="Interest"
+          paidLabel="paid"
+          segments={[interestSegment]}
+          totalLabel="Whole loan"
+        />
+        <Meter
+          leftLabel="Still to pay"
+          meter={cash}
+          name="Everything you pay"
+          paidLabel="paid"
+          segments={[principalSegment, partPaymentSegment, interestSegment]}
+          totalLabel="Whole loan"
+        />
+      </div>
+
+      <ul className="legend">
+        <li>
+          <span className="swatch" style={{ background: 'var(--c-principal)' }} />
+          Principal through EMIs <strong>{formatInrShort(emiPrincipal)}</strong>
+        </li>
+        <li>
+          <span className="swatch" style={{ background: 'var(--c-prepay)' }} />
+          Part payments <strong>{formatInrShort(partPayments)}</strong>
+        </li>
+        <li>
+          <span className="swatch" style={{ background: 'var(--c-interest)' }} />
+          Interest
+        </li>
+        <li>
+          <span className="swatch is-outstanding-fill" />
+          Still to pay
+        </li>
+      </ul>
+      <p className="footnote">
+        Interest includes {formatInrShort(interestOutsideEmis)} charged outside EMIs: on part
+        payments and before the first EMI. Amounts still to pay assume today&apos;s rate holds until
+        the last EMI.
+      </p>
     </section>
   );
 }
 
-function ProgressFigure({
-  accent,
-  detail,
-  label,
-  value,
-}: {
-  accent?: 'positive' | 'remaining';
-  detail?: string;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className={`loan-progress-figure ${accent ? `is-${accent}` : ''}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      {detail ? <small>{detail}</small> : null}
-    </div>
-  );
-}
+type MeterProps = {
+  name: string;
+  meter: ProgressMeter;
+  segments: Segment[];
+  paidLabel: string;
+  leftLabel: string;
+  totalLabel: string;
+};
 
-function PrincipalTrack({ meter }: { meter: ProgressMeter }) {
-  const emiPrincipal =
-    meter.segments.find((segment) => segment.key === 'emi-principal')?.amount ?? 0;
-  const partPayments =
-    meter.segments.find((segment) => segment.key === 'part-payments')?.amount ?? 0;
+function Meter({ name, meter, segments, paidLabel, leftLabel, totalLabel }: MeterProps) {
+  const paid = formatInrShort(meter.filled);
+  const left = formatInrShort(meter.remaining);
 
   return (
-    <div
-      aria-label={`${formatInrShort(meter.filled)} principal repaid, ${formatInrShort(meter.remaining)} outstanding`}
-      className="loan-principal-track"
-      role="img"
-    >
-      <span
-        className="loan-principal-segment is-emi"
-        style={{ width: widthPercent(emiPrincipal, meter.total) }}
-      />
-      <span
-        className="loan-principal-segment is-prepayment"
-        style={{ width: widthPercent(partPayments, meter.total) }}
-      />
-      <span
-        className="loan-principal-segment is-outstanding"
-        style={{ width: widthPercent(meter.remaining, meter.total) }}
-      />
-    </div>
-  );
-}
-
-function LoanBreakdownDialog({
-  analysis,
-  closeRef,
-  progress,
-  titleId,
-  onClose,
-}: {
-  analysis: LoanAnalysis;
-  closeRef: React.RefObject<HTMLButtonElement | null>;
-  progress: PaidProgress;
-  titleId: string;
-  onClose: () => void;
-}) {
-  const principalPercent = percent(progress.principal.filled, progress.principal.total);
-  const emiPrincipal = amountFor(progress.principal, 'emi-principal');
-  const partPayments = amountFor(progress.principal, 'part-payments');
-  const regularInterest = amountFor(progress.interest, 'emi-interest');
-  const partPaymentInterest = amountFor(progress.interest, 'simple-interest');
-  const preEmiInterest = amountFor(progress.interest, 'pre-emi');
-  const emisPaid = amountFor(progress.cash, 'emi');
-  const additionalInterest = amountFor(progress.cash, 'extra-interest');
-
-  return (
-    <div className="loan-breakdown-overlay" onClick={onClose}>
+    <div className="meter">
+      <div className="label">{name}</div>
+      <div className="meter-value">
+        <strong>{paid}</strong> {paidLabel}
+      </div>
       <div
-        aria-labelledby={titleId}
-        aria-modal="true"
-        className="loan-breakdown-dialog"
-        data-paid-dialog=""
-        role="dialog"
-        onClick={(event) => event.stopPropagation()}
+        aria-label={`${name}: ${paid} ${paidLabel}, ${left} ${leftLabel.toLowerCase()}`}
+        className="meter-track"
+        role="img"
       >
-        <header className="loan-breakdown-header">
-          <div>
-            <div className="label">Complete picture</div>
-            <h3 id={titleId}>Your loan breakdown</h3>
-            <p>Principal is the loan itself. Interest is the cost of paying it over time.</p>
-          </div>
-          <button
-            aria-label="Close loan breakdown"
-            className="icon-btn loan-breakdown-close"
-            data-paid-close=""
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-          >
-            <X aria-hidden="true" size={18} />
-          </button>
-        </header>
-
-        <section className="loan-breakdown-hero">
-          <div className="loan-breakdown-hero-copy">
-            <div>
-              <span>Original loan</span>
-              <strong>{formatInrShort(progress.principal.total)}</strong>
-            </div>
-            <div className="loan-breakdown-repaid">
-              <span>{principalPercent.toFixed(1)}% repaid</span>
-              <strong>{formatInrShort(progress.principal.filled)}</strong>
-            </div>
-            <div>
-              <span>Outstanding</span>
-              <strong>{formatInrShort(progress.principal.remaining)}</strong>
-            </div>
-          </div>
-          <PrincipalTrack meter={progress.principal} />
-          <div className="loan-track-legend">
-            <LegendItem className="is-emi" label="Through EMIs" value={emiPrincipal} />
-            <LegendItem className="is-prepayment" label="Part payments" value={partPayments} />
-            <LegendItem
-              className="is-outstanding"
-              label="Outstanding"
-              value={progress.principal.remaining}
-            />
-          </div>
-        </section>
-
-        <div className="loan-breakdown-grid">
-          <BreakdownCard
-            eyebrow="Principal"
-            title={formatInrShort(progress.principal.total)}
-            rows={[
-              { label: 'Repaid through EMIs', value: emiPrincipal },
-              { label: 'Part payments', value: partPayments },
-              {
-                label: 'Outstanding principal',
-                value: progress.principal.remaining,
-                emphasis: true,
-              },
-            ]}
+        {segments.map((segment) => (
+          <span
+            key={segment.key}
+            style={{ width: widthPercent(segment.amount, meter.total), background: segment.color }}
           />
-          <BreakdownCard
-            eyebrow="Interest"
-            title={formatInrShort(progress.interest.total)}
-            subtitle="Current-plan interest"
-            rows={[
-              { label: 'Paid to date', value: progress.interest.filled },
-              { label: 'Regular interest paid', value: regularInterest },
-              { label: 'Part-payment interest', value: partPaymentInterest },
-              { label: 'Pre-EMI interest', value: preEmiInterest },
-              { label: 'Still to pay', value: progress.interest.remaining, emphasis: true },
-            ]}
-          />
-          <BreakdownCard
-            wide
-            eyebrow="Cash flow"
-            title={formatInrShort(progress.cash.total)}
-            subtitle="Lifetime outflow"
-            rows={[
-              { label: 'EMIs paid', value: emisPaid },
-              { label: 'Part payments', value: partPayments },
-              { label: 'Additional interest charges', value: additionalInterest },
-              { label: 'Scheduled from today', value: progress.cash.remaining, emphasis: true },
-            ]}
-          />
-        </div>
-
-        <section className="loan-outlook">
-          <div className="loan-outlook-heading">
-            <div>
-              <div className="label">Lifetime outlook</div>
-              <h4>{analysis.remainingPaymentCount} payments left</h4>
-            </div>
-            <span>Payoff {formatMonthYear(analysis.actual.summary.payoffDate)}</span>
-          </div>
-          <div className="loan-outlook-grid">
-            <OutlookStat label="Time saved" value={formatDuration(analysis.monthsSaved)} />
-            <OutlookStat
-              label="Original-plan interest"
-              value={analysis.original.summary.totalInterest}
-            />
-            <OutlookStat accent label="Interest saved" value={analysis.interestSaved} />
-          </div>
-        </section>
-
-        <p className="loan-breakdown-note">
-          Interest estimates follow your current repayment plan and hold the latest rate constant.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function LegendItem({
-  className,
-  label,
-  value,
-}: {
-  className: string;
-  label: string;
-  value: number;
-}) {
-  return (
-    <div>
-      <span className={`loan-legend-dot ${className}`} />
-      <span>{label}</span>
-      <strong>{formatInrShort(value)}</strong>
-    </div>
-  );
-}
-
-function BreakdownCard({
-  eyebrow,
-  rows,
-  subtitle,
-  title,
-  wide = false,
-}: {
-  eyebrow: string;
-  rows: Array<{ label: string; value: number; emphasis?: boolean }>;
-  subtitle?: string;
-  title: string;
-  wide?: boolean;
-}) {
-  return (
-    <section className={`loan-breakdown-card ${wide ? 'is-wide' : ''}`}>
-      <div className="label">{eyebrow}</div>
-      <div className="loan-breakdown-card-total">
-        <strong>{title}</strong>
-        {subtitle ? <span>{subtitle}</span> : null}
-      </div>
-      <div className="loan-breakdown-rows">
-        {rows.map((row) => (
-          <div className={row.emphasis ? 'is-emphasis' : ''} key={row.label}>
-            <span>{row.label}</span>
-            <strong>{formatInrShort(row.value)}</strong>
-          </div>
         ))}
+        <span
+          className="is-outstanding-fill"
+          style={{ width: widthPercent(meter.remaining, meter.total) }}
+        />
       </div>
-    </section>
-  );
-}
-
-function OutlookStat({
-  accent = false,
-  label,
-  value,
-}: {
-  accent?: boolean;
-  label: string;
-  value: number | string;
-}) {
-  return (
-    <div className={accent ? 'is-accent' : ''}>
-      <span>{label}</span>
-      <strong>{typeof value === 'number' ? formatInrShort(value) : value}</strong>
+      <dl className="meter-figures">
+        <div>
+          <dt>{leftLabel}</dt>
+          <dd>{left}</dd>
+        </div>
+        <div>
+          <dt>{totalLabel}</dt>
+          <dd>{formatInrShort(meter.total)}</dd>
+        </div>
+      </dl>
     </div>
   );
 }

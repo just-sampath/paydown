@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
+
+import { ModalOverlay, useModal } from './Modal';
 
 type UnlockDialogProps = {
   onUnlock: (passphrase: string, remember: boolean) => Promise<void>;
@@ -11,7 +13,8 @@ const WRONG_PASSPHRASE = "That passphrase didn't unlock set a.";
  * Modal passphrase prompt for an encrypted data set.
  *
  * The passphrase only ever lives in this component's state and is cleared after every
- * attempt. Submission never navigates, so nothing reaches a URL.
+ * attempt. Submission never navigates, so nothing reaches a URL. Focus stays inside the
+ * dialog, and Escape closes it unless an attempt is running.
  *
  * @param props - Dialog props.
  * @param props.onUnlock - Attempts the unlock; rejects on a wrong passphrase.
@@ -24,10 +27,11 @@ export function UnlockDialog({ onUnlock, onClose }: UnlockDialogProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  const formRef = useModal<HTMLFormElement>({
+    onClose,
+    locked: pending,
+    initialFocus: inputRef,
+  });
 
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
@@ -53,23 +57,17 @@ export function UnlockDialog({ onUnlock, onClose }: UnlockDialogProps) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"
-      onKeyDown={(event) => {
-        if (event.key === 'Escape' && !pending) {
-          onClose();
-        }
-      }}
-    >
+    <ModalOverlay>
       <form
         aria-labelledby="unlock-title"
         aria-modal="true"
-        className="card w-full max-w-sm"
+        className="modal"
         method="post"
         onSubmit={(event) => void submit(event)}
+        ref={formRef}
         role="dialog"
       >
-        <h2 className="m-0 text-lg font-extrabold" id="unlock-title">
+        <h2 className="modal-title" id="unlock-title">
           unlock set a
         </h2>
         <div className="field-row mt-4">
@@ -104,7 +102,7 @@ export function UnlockDialog({ onUnlock, onClose }: UnlockDialogProps) {
             {error}
           </p>
         )}
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="modal-actions">
           <button className="btn" disabled={pending} onClick={onClose} type="button">
             Cancel
           </button>
@@ -113,6 +111,6 @@ export function UnlockDialog({ onUnlock, onClose }: UnlockDialogProps) {
           </button>
         </div>
       </form>
-    </div>
+    </ModalOverlay>
   );
 }

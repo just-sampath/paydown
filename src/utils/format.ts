@@ -8,6 +8,13 @@ const compactCurrency = new Intl.NumberFormat('en-IN', {
   maximumFractionDigits: 2,
 });
 
+const groupedNumber = new Intl.NumberFormat('en-IN', {
+  maximumFractionDigits: 2,
+});
+
+/** Three-letter month names. `en-IN` would print "Sept", which breaks the column rhythm. */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 /**
  * Formats rupees with Indian grouping.
  *
@@ -44,12 +51,26 @@ export function formatInrShort(value: number): string {
 }
 
 /**
- * Formats a whole-month duration.
+ * Formats a plain number with Indian digit grouping and no currency symbol.
+ *
+ * @param value - Number to format.
+ * @returns Grouped number such as `1,25,000`.
+ */
+export function formatGrouped(value: number): string {
+  return groupedNumber.format(value);
+}
+
+/**
+ * Formats a whole-month duration. Negative values keep their sign on the whole duration.
  *
  * @param months - Duration in whole months.
- * @returns Human-readable duration such as `5 yr 11 mo`.
+ * @returns Human-readable duration such as `5 yr 11 mo` or `-9 yr 8 mo`.
  */
 export function formatDuration(months: number): string {
+  if (months < 0) {
+    return `-${formatDuration(-months)}`;
+  }
+
   const years = Math.floor(months / 12);
   const remainingMonths = months % 12;
 
@@ -71,11 +92,8 @@ export function formatDuration(months: number): string {
  * @returns Date label such as `01 Apr 2023`.
  */
 export function formatDate(isoDate: string): string {
-  return dateFromIso(isoDate).toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
+  const [year = '0', month = '1', day = '1'] = isoDate.split('-');
+  return `${day.padStart(2, '0')} ${monthName(Number(month))} ${year}`;
 }
 
 /**
@@ -85,10 +103,8 @@ export function formatDate(isoDate: string): string {
  * @returns Date label such as `Apr 2023`.
  */
 export function formatMonthYear(isoDate: string): string {
-  return dateFromIso(isoDate).toLocaleDateString('en-IN', {
-    month: 'short',
-    year: 'numeric',
-  });
+  const [year = '0', month = '1'] = isoDate.split('-');
+  return `${monthName(Number(month))} ${year}`;
 }
 
 /**
@@ -103,6 +119,28 @@ export function formatPercent(value: number, digits = 2): string {
 }
 
 /**
+ * Formats a gap between two rates in percentage points, without a sign.
+ *
+ * @param value - Difference between two annual rates.
+ * @returns Label such as `0.80 pts`.
+ */
+export function formatPoints(value: number): string {
+  return `${Math.abs(value).toFixed(2)} pts`;
+}
+
+/**
+ * Picks the singular or plural form of a noun for a count.
+ *
+ * @param count - How many items there are.
+ * @param singular - Noun used when the count is exactly one.
+ * @param plural - Noun used otherwise; defaults to `singular` plus "s".
+ * @returns Phrase such as `1 payment` or `3 payments`.
+ */
+export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+/**
  * Converts an ISO date string to a local date at noon.
  *
  * @param isoDate - ISO date string in `YYYY-MM-DD` format.
@@ -111,4 +149,8 @@ export function formatPercent(value: number, digits = 2): string {
 export function dateFromIso(isoDate: string): Date {
   const [year = '0', month = '1', day = '1'] = isoDate.split('-');
   return new Date(Number(year), Number(month) - 1, Number(day), 12);
+}
+
+function monthName(month: number): string {
+  return MONTHS[month - 1] ?? '';
 }

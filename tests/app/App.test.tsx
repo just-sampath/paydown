@@ -44,7 +44,7 @@ describe('app data sets', () => {
 
     expect(window.localStorage.getItem(LEGACY_DATA_STORAGE_KEY)).toBeNull();
     expect(sidebar(container)).toContain('Sample loan');
-    expect(fieldValues(container)).toContain('Sample Bank');
+    expect(pageText(container)).toContain('Sample Bank');
     expect(buttonByText(container, 'unlock set a')).toBeTruthy();
   });
 
@@ -57,7 +57,7 @@ describe('app data sets', () => {
     });
 
     expect(sidebar(container)).toContain('Sample loan');
-    expect(fieldValues(container)).not.toContain('Test Lender');
+    expect(pageText(container)).not.toContain('Test Lender');
   });
 
   test('unlocks, remembers the device, restores on reload, and locks again', async () => {
@@ -69,7 +69,7 @@ describe('app data sets', () => {
       timeout: 10_000,
     });
     expect(sidebar(first.container)).toContain('Test set');
-    expect(fieldValues(first.container)).toContain('Test Lender');
+    expect(pageText(first.container)).toContain('Test Lender');
     expect(await keyStore.get()).toBeDefined();
 
     unmount();
@@ -83,8 +83,56 @@ describe('app data sets', () => {
     });
     await vi.waitFor(() => expect(sidebar(second.container)).toContain('Sample loan'));
     expect(await keyStore.get()).toBeUndefined();
-    expect(fieldValues(second.container)).not.toContain('Test Lender');
+    expect(pageText(second.container)).not.toContain('Test Lender');
   }, 30_000);
+
+  test('starts a newly opened page at the top', () => {
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
+    mount(createMemoryKeyStore());
+
+    act(() => {
+      window.location.hash = '#rates';
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0 });
+    scrollTo.mockRestore();
+  });
+
+  test('the unlock dialog keeps focus inside and closes on Escape from anywhere', () => {
+    const { container } = mount(createMemoryKeyStore());
+    const opener = buttonByText(container, 'unlock set a') as HTMLButtonElement;
+
+    act(() => opener.focus());
+    act(() => opener.click());
+    const dialog = container.querySelector('form[role="dialog"]') as HTMLFormElement;
+    expect(document.activeElement?.id).toBe('unlock-passphrase');
+
+    act(() => {
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }),
+      );
+    });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    act(() => {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(container.querySelector('form[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  test('restoring the default data keeps the chosen theme', () => {
+    const { container } = mount(createMemoryKeyStore());
+
+    act(() => buttonByText(container, 'Light')?.click());
+    act(() => buttonByText(container, 'Restore default data')?.click());
+    const dialog = container.querySelector('[role="alertdialog"]') as HTMLElement;
+    act(() => buttonByText(dialog, 'Restore default data')?.click());
+
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(window.localStorage.getItem('paydown:prefs:v1')).toContain('"light"');
+  });
 
   test('keeps the sample when the build has no data set', () => {
     const { container } = mount(createMemoryKeyStore(), false);
@@ -154,6 +202,6 @@ function sidebar(container: HTMLElement): string {
   return container.querySelector('.sidebar-footer')?.textContent ?? '';
 }
 
-function fieldValues(container: HTMLElement): string[] {
-  return Array.from(container.querySelectorAll('input')).map((input) => input.value);
+function pageText(container: HTMLElement): string {
+  return container.querySelector('main')?.textContent ?? '';
 }

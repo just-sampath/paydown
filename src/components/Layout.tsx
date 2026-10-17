@@ -1,26 +1,31 @@
-import { CalendarClock, Gauge, HelpCircle, Landmark, Settings, TrendingDown } from 'lucide-react';
+import {
+  CalendarRange,
+  FlaskConical,
+  HandCoins,
+  LayoutDashboard,
+  Percent,
+  Settings,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
-
-import { classNames } from '../utils/classNames';
 
 export type PageId = 'dashboard' | 'schedule' | 'rates' | 'parts' | 'whatif' | 'settings';
 
 const navItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: Gauge },
-  { id: 'schedule', label: 'Amortization', icon: CalendarClock },
-  { id: 'rates', label: 'Rate changes', icon: TrendingDown },
-  { id: 'parts', label: 'Part payments', icon: Landmark },
-  { id: 'whatif', label: 'What-if', icon: HelpCircle },
-  { id: 'settings', label: 'Settings', icon: Settings },
-] satisfies Array<{ id: PageId; label: string; icon: typeof Gauge }>;
+  { id: 'dashboard', label: 'Dashboard', short: 'Home', icon: LayoutDashboard },
+  { id: 'schedule', label: 'Schedule', short: 'Schedule', icon: CalendarRange },
+  { id: 'rates', label: 'Rate changes', short: 'Rates', icon: Percent },
+  { id: 'parts', label: 'Part payments', short: 'Prepay', icon: HandCoins },
+  { id: 'whatif', label: 'What-if', short: 'What-if', icon: FlaskConical },
+  { id: 'settings', label: 'Settings', short: 'Settings', icon: Settings },
+] satisfies Array<{ id: PageId; label: string; short: string; icon: typeof Settings }>;
 
 const pageCopy: Record<PageId, { title: string; subtitle: string }> = {
-  dashboard: { title: 'Dashboard', subtitle: 'Your loan, at a glance' },
-  schedule: { title: 'Amortization schedule', subtitle: 'Every payment, every month' },
-  rates: { title: 'Floating rate changes', subtitle: 'Track every rate revision and its impact' },
-  parts: { title: 'Part payments', subtitle: 'Lump sums that shave months off your tenure' },
-  whatif: { title: 'What-if simulator', subtitle: 'See how changes would affect your payoff' },
-  settings: { title: 'Settings', subtitle: 'Loan parameters and computation strategy' },
+  dashboard: { title: 'Dashboard', subtitle: 'Where your loan stands today' },
+  schedule: { title: 'Payment schedule', subtitle: 'Every EMI, grouped by year' },
+  rates: { title: 'Rate changes', subtitle: 'Each change to your floating rate and what it did' },
+  parts: { title: 'Part payments', subtitle: 'Lump sums you paid on top of the EMI' },
+  whatif: { title: 'What-if', subtitle: 'Try extra payments or rate changes before you commit' },
+  settings: { title: 'Settings', subtitle: 'Loan terms, appearance and data' },
 };
 
 type AppLayoutProps = {
@@ -28,17 +33,22 @@ type AppLayoutProps = {
   onNavigate: (page: PageId) => void;
   loanLabel: string;
   loanDetail: string;
+  banner?: ReactNode;
   children: ReactNode;
 };
 
 /**
- * Renders the persistent sidebar, topbar, and page content region.
+ * Renders the navigation, page header, and page content region.
+ *
+ * On wide screens the navigation is a sidebar; on phones it becomes a labelled tab bar
+ * fixed to the bottom of the screen.
  *
  * @param props - Layout props.
  * @param props.activePage - Currently active page id.
- * @param props.onNavigate - Navigation callback for sidebar buttons.
- * @param props.loanLabel - Name and size of the active loan for the sidebar footer.
- * @param props.loanDetail - Secondary line for the sidebar footer.
+ * @param props.onNavigate - Navigation callback for the nav buttons.
+ * @param props.loanLabel - Name of the active loan for the sidebar footer.
+ * @param props.loanDetail - Size and first EMI of the loan, under its name.
+ * @param props.banner - Optional notices shown under the page header.
  * @param props.children - Active page element.
  * @returns App layout element.
  */
@@ -47,6 +57,7 @@ export function AppLayout({
   onNavigate,
   loanLabel,
   loanDetail,
+  banner,
   children,
 }: AppLayoutProps) {
   const copy = pageCopy[activePage];
@@ -55,14 +66,15 @@ export function AppLayout({
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">PA</div>
-          <div className="brand-text">
+          <div className="brand-mark" aria-hidden="true">
+            PA
+          </div>
+          <div>
             <div className="font-bold leading-tight">Paydown</div>
-            <div className="subtle text-xs">Loan tracker</div>
+            <div className="subtle text-xs">Home loan tracker</div>
           </div>
         </div>
-        <nav className="py-4" aria-label="Primary navigation">
-          <div className="label mb-3 px-6 nav-label">Workspace</div>
+        <nav className="sidebar-nav" aria-label="Main">
           {navItems.map((item) => (
             <NavButton
               key={item.id}
@@ -73,18 +85,17 @@ export function AppLayout({
           ))}
         </nav>
         <div className="sidebar-footer">
-          <div className="label">Active loan</div>
-          <div className="mt-2 font-bold">{loanLabel}</div>
+          <div className="label">Showing</div>
+          <div className="mt-1 font-bold">{loanLabel}</div>
           {loanDetail && <div className="subtle text-xs">{loanDetail}</div>}
         </div>
       </aside>
       <main className="main">
         <header className="topbar">
-          <div>
-            <h1 className="m-0 text-2xl font-extrabold">{copy.title}</h1>
-            <p className="subtle m-0 mt-1 text-sm">{copy.subtitle}</p>
-          </div>
+          <h1>{copy.title}</h1>
+          <p>{copy.subtitle}</p>
         </header>
+        {banner}
         {children}
       </main>
     </div>
@@ -102,15 +113,17 @@ function NavButton({ item, selected, onClick }: NavButtonProps) {
 
   return (
     <button
-      className={classNames('nav-link', selected && 'font-bold')}
-      aria-label={item.label}
+      className="nav-link"
       aria-current={selected ? 'page' : undefined}
+      aria-label={item.label}
       onClick={onClick}
-      title={item.label}
       type="button"
     >
-      <Icon size={20} />
-      <span className="nav-label">{item.label}</span>
+      <Icon aria-hidden="true" size={20} />
+      <span className="nav-full">{item.label}</span>
+      <span className="nav-short" aria-hidden="true">
+        {item.short}
+      </span>
     </button>
   );
 }

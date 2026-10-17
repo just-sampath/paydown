@@ -4,21 +4,24 @@ import { describe, expect, test } from 'vitest';
 import { AppLayout } from '../../src/components/Layout';
 
 describe('application layout', () => {
-  test('labels icon navigation and does not show a dead payment action', () => {
+  test('labels every nav item with full and short names and keeps one page heading', () => {
     const markup = renderToStaticMarkup(
       <AppLayout
-        activePage="dashboard"
+        activePage="whatif"
         onNavigate={() => undefined}
         loanLabel="Sample loan · ₹45L"
-        loanDetail="Started Apr 2023"
+        loanDetail="First EMI Apr 2023"
       >
         <div>content</div>
       </AppLayout>,
     );
 
     expect(markup).toContain('aria-label="Dashboard"');
-    expect(markup).toContain('title="Dashboard"');
-    expect(markup).not.toContain('Log payment');
+    expect(markup).toContain('aria-label="Part payments"');
+    expect(markup).toContain('>Prepay<');
+    expect(markup).toContain('aria-current="page"');
+    expect(markup.match(/<h1/g)).toHaveLength(1);
+    expect(markup).toContain('<h1>What-if</h1>');
     expect(markup).toContain('Sample loan · ₹45L');
   });
 });

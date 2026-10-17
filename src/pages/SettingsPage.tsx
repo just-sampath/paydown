@@ -1,19 +1,14 @@
-import { Lock, RotateCcw, Unlock } from 'lucide-react';
-import { useState } from 'react';
+import { Lock, Moon, RotateCcw, Sun, Unlock } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 
-import { Card } from '../components/Primitives';
-import { UnlockDialog } from '../components/UnlockDialog';
 import type { DatasetId } from '../app/App';
 import type { AppearancePrefs } from '../app/storage';
+import { ConfirmDialog } from '../components/Modal';
+import { Card } from '../components/Primitives';
+import { UnlockDialog } from '../components/UnlockDialog';
 import type { LoanAnalysis } from '../features/loan/loanEngine';
 import type { LoanProfile } from '../features/vault/loanProfile';
-import {
-  formatDate,
-  formatDuration,
-  formatInr,
-  formatInrShort,
-  formatPercent,
-} from '../utils/format';
+import { formatDate, formatDuration, formatInr, formatPercent, pluralize } from '../utils/format';
 
 type SettingsPageProps = {
   analysis: LoanAnalysis;
@@ -27,8 +22,14 @@ type SettingsPageProps = {
   onLock: () => Promise<void>;
 };
 
+const PALETTES: Array<{ id: AppearancePrefs['palette']; name: string; colors: string[] }> = [
+  { id: 'carbon', name: 'Carbon', colors: ['#0b0a07', '#ffe15a', '#b8a3f0'] },
+  { id: 'default', name: 'Navy', colors: ['#003d5b', '#25e2cc', '#f06000'] },
+  { id: 'cocoa', name: 'Cocoa', colors: ['#5b2c20', '#e8946a', '#f2c879'] },
+];
+
 /**
- * Renders loan settings, theme controls, and reset controls.
+ * Renders appearance controls, the loan's fixed terms, and data controls.
  *
  * @param props - Settings props.
  * @param props.analysis - Loan analysis containing derived values.
@@ -55,179 +56,186 @@ export function SettingsPage({
 }: SettingsPageProps) {
   const { meta, loan } = profile;
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const unlocked = datasetId === 'set-a';
 
   return (
-    <div className="content">
-      <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
-        <Card
-          eyebrow="Loan details"
-          title={meta.name}
-          subtitle="Originating loan parameters. Events are edited on their own pages."
-        >
-          <Field label="Loan name" value={meta.name} />
-          <Field label="Lender" value={meta.lender} />
-          <Field label="Principal" value={formatInr(loan.principal)} />
-          <Field label="Starting rate" value={formatPercent(loan.originalRate)} />
-          <Field label="Tenure" value={formatDuration(loan.tenureMonths)} />
-          <Field label="Start date" value={formatDate(loan.startDate)} />
-          <Field label="EMI day" value="1st of each month" />
-          <Field label="Rate type" value="Floating" />
-          <Field label="Strategy on change" value="Reduce tenure (keep EMI)" />
-        </Card>
-
-        <Card eyebrow="Computed" title="Derived values">
-          <div className="grid gap-4">
-            <Metric label="Base EMI" value={formatInr(analysis.actual.summary.baseEmi)} />
-            <Metric
-              label="Final payment"
-              value={formatInr(analysis.actual.rows.at(-1)?.emi ?? 0)}
-            />
-            <Metric
-              label="Original total interest"
-              value={formatInr(analysis.original.summary.totalInterest)}
-            />
-            <Metric
-              label="Actual total interest"
-              value={formatInr(analysis.actual.summary.totalInterest)}
-              accent
-            />
-            <Metric
-              label="Total outflow"
-              value={formatInrShort(analysis.actual.summary.totalOutflow)}
-            />
-            <Metric
-              label="Prepayment simple interest"
-              value={formatInr(analysis.actual.summary.totalSimpleInterest)}
-            />
-            <Metric
-              label="Pre-EMI interest"
-              value={formatInr(analysis.actual.summary.preEmiInterest)}
-            />
-          </div>
-        </Card>
-      </div>
-
-      <div className="section-grid">
-        <Card eyebrow="Appearance" title="Theme and palette">
-          <div className="field-row">
-            <label className="label" htmlFor="theme">
-              Theme
-            </label>
-            <select
-              className="select"
-              id="theme"
-              value={prefs.theme}
-              onChange={(event) =>
-                onPrefsChange({ ...prefs, theme: event.target.value as AppearancePrefs['theme'] })
-              }
+    <div className="content stack">
+      <Card eyebrow="Appearance" title="Theme and colours">
+        <div className="settings-row">
+          <span className="field-label" id="theme-label">
+            Theme
+          </span>
+          <div className="segmented" role="group" aria-labelledby="theme-label">
+            <ToggleButton
+              pressed={prefs.theme === 'dark'}
+              onClick={() => onPrefsChange({ ...prefs, theme: 'dark' })}
             >
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </select>
-          </div>
-          <div className="field-row">
-            <label className="label" htmlFor="palette">
-              Palette
-            </label>
-            <select
-              className="select"
-              id="palette"
-              value={prefs.palette}
-              onChange={(event) =>
-                onPrefsChange({
-                  ...prefs,
-                  palette: event.target.value as AppearancePrefs['palette'],
-                })
-              }
+              <Moon aria-hidden="true" size={15} />
+              Dark
+            </ToggleButton>
+            <ToggleButton
+              pressed={prefs.theme === 'light'}
+              onClick={() => onPrefsChange({ ...prefs, theme: 'light' })}
             >
-              <option value="carbon">Carbon · Citron</option>
-              <option value="default">Navy · Teal</option>
-              <option value="cocoa">Cocoa · Apricot</option>
-            </select>
+              <Sun aria-hidden="true" size={15} />
+              Light
+            </ToggleButton>
           </div>
-        </Card>
+        </div>
+        <div className="settings-row">
+          <span className="field-label" id="palette-label">
+            Palette
+          </span>
+          <div className="segmented" role="group" aria-labelledby="palette-label">
+            {PALETTES.map((palette) => (
+              <ToggleButton
+                key={palette.id}
+                pressed={prefs.palette === palette.id}
+                onClick={() => onPrefsChange({ ...prefs, palette: palette.id })}
+              >
+                <span aria-hidden="true" className="palette-dots">
+                  {palette.colors.map((color) => (
+                    <span key={color} style={{ background: color }} />
+                  ))}
+                </span>
+                {palette.name}
+              </ToggleButton>
+            ))}
+          </div>
+        </div>
+      </Card>
 
-        <Card
-          eyebrow="Data sets"
-          title={datasetId === 'set-a' ? 'set a · unlocked' : 'Sample loan'}
-          subtitle={
-            datasetId === 'set-a'
-              ? 'Edits here are temporary. Lock to return to the sample and forget this device.'
-              : 'Figures shown are fictional.'
-          }
-        >
-          {datasetId === 'set-a' ? (
-            <button className="btn w-full" onClick={() => void onLock()} type="button">
-              <Lock size={16} />
-              lock
-            </button>
-          ) : (
+      <Card
+        eyebrow="Loan terms"
+        title={`${meta.name} from ${meta.lender}`}
+        subtitle="These come with the loan data and can't be changed here. Rate changes and part payments have their own pages."
+      >
+        <dl className="terms-grid">
+          <Term label="Amount borrowed" value={formatInr(loan.principal)} />
+          <Term label="Starting rate" value={`${formatPercent(loan.originalRate)}, floating`} />
+          <Term
+            label="Original term"
+            value={`${formatDuration(loan.tenureMonths)} (${pluralize(loan.tenureMonths, 'EMI')})`}
+          />
+          <Term label="First EMI" value={formatDate(loan.startDate)} />
+          <Term label="EMI" value={formatInr(analysis.actual.summary.baseEmi)} />
+          <Term
+            label="EMI due on"
+            value={`The ${ordinal(Number(loan.startDate.slice(8, 10)))} of each month`}
+          />
+          <Term label="Last EMI" value={formatInr(analysis.actual.rows.at(-1)?.emi ?? 0)} />
+          <Term
+            label="Pre-EMI interest"
+            value={formatInr(analysis.actual.summary.preEmiInterest)}
+          />
+          <Term label="When the rate changes" value="EMI stays, term moves" />
+          <Term
+            label="Part-payment interest"
+            value={formatInr(analysis.actual.summary.totalSimpleInterest)}
+          />
+        </dl>
+      </Card>
+
+      <Card eyebrow="Data" title="Data on this device">
+        <div className="settings-row is-action">
+          <div>
+            <div className="font-bold">Restore default data</div>
+            <p className="subtle m-0 mt-1 text-sm">
+              {unlocked
+                ? 'Drops the edits you made since set a was unlocked.'
+                : 'Puts back the sample rate changes and part payments and deletes your scenarios. Your theme stays as it is.'}
+            </p>
+          </div>
+          <div className="flex justify-end">
             <button
-              className="btn w-full"
-              disabled={!vaultAvailable}
-              onClick={() => setDialogOpen(true)}
-              title={vaultAvailable ? undefined : 'No data set in this build.'}
+              className="btn btn-quiet-danger"
               type="button"
+              onClick={() => setConfirmingReset(true)}
             >
-              <Unlock size={16} />
-              unlock set a
+              <RotateCcw aria-hidden="true" size={16} />
+              Restore default data
             </button>
-          )}
-          {dialogOpen && <UnlockDialog onClose={() => setDialogOpen(false)} onUnlock={onUnlock} />}
-        </Card>
-
-        <Card
-          eyebrow="Data"
-          title="Restore default data"
-          subtitle={
-            datasetId === 'set-a'
-              ? 'Discards edits made since set a was unlocked.'
-              : "Replaces local edits, scenarios, and appearance preferences with this dashboard's defaults."
-          }
-        >
-          <button
-            className="btn btn-danger w-full"
-            onClick={() => {
-              if (
-                window.confirm(
-                  'Restore the default loan data? This replaces your local edits and scenarios.',
-                )
-              ) {
-                onResetData();
-              }
+          </div>
+        </div>
+        {confirmingReset && (
+          <ConfirmDialog
+            confirmLabel={unlocked ? 'Drop edits' : 'Restore default data'}
+            title={unlocked ? 'Drop your edits to set a?' : 'Restore the default data?'}
+            onCancel={() => setConfirmingReset(false)}
+            onConfirm={() => {
+              setConfirmingReset(false);
+              onResetData();
             }}
           >
-            <RotateCcw size={16} />
-            Restore default data
-          </button>
-        </Card>
-      </div>
+            {unlocked
+              ? 'Rate changes, part payments and scenarios go back to how they were when you unlocked set a.'
+              : "Your rate changes and part payments go back to the sample ones, and your scenarios are deleted. This can't be undone."}
+          </ConfirmDialog>
+        )}
+        <div className="settings-row is-action">
+          <div>
+            <div className="font-bold">{unlocked ? 'set a · unlocked' : 'Sample loan'}</div>
+            <p className="subtle m-0 mt-1 text-sm">
+              {unlocked
+                ? 'Edits here last until you close the tab. Locking goes back to the sample and forgets this device.'
+                : 'All figures shown are made up.'}
+            </p>
+          </div>
+          <div className="flex justify-end">
+            {unlocked ? (
+              <button className="btn" onClick={() => void onLock()} type="button">
+                <Lock aria-hidden="true" size={16} />
+                lock
+              </button>
+            ) : (
+              <button
+                className="btn"
+                disabled={!vaultAvailable}
+                onClick={() => setDialogOpen(true)}
+                title={vaultAvailable ? undefined : 'No data set in this build.'}
+                type="button"
+              >
+                <Unlock aria-hidden="true" size={16} />
+                unlock set a
+              </button>
+            )}
+          </div>
+        </div>
+        {dialogOpen && <UnlockDialog onClose={() => setDialogOpen(false)} onUnlock={onUnlock} />}
+      </Card>
     </div>
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="field-row">
-      <div className="label">{label}</div>
-      <input className="input" value={value} readOnly />
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  accent = false,
+function ToggleButton({
+  pressed,
+  onClick,
+  children,
 }: {
-  label: string;
-  value: string;
-  accent?: boolean;
+  pressed: boolean;
+  onClick: () => void;
+  children: ReactNode;
 }) {
   return (
+    <button aria-pressed={pressed} type="button" onClick={onClick}>
+      {children}
+    </button>
+  );
+}
+
+function Term({ label, value }: { label: string; value: string }) {
+  return (
     <div>
-      <div className="label">{label}</div>
-      <div className={`mt-1 font-extrabold ${accent ? 'text-[var(--jade)]' : ''}`}>{value}</div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
     </div>
   );
+}
+
+function ordinal(day: number): string {
+  const tens = day % 100;
+  const suffix =
+    tens >= 11 && tens <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[day % 10] ?? 'th');
+  return `${day}${suffix}`;
 }

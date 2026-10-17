@@ -83,9 +83,9 @@ function ErrorFallback({ error, canReset, onReset }: ErrorFallbackProps): ReactN
     <div className="content">
       <section className="card">
         <div className="label mb-1">Something went wrong</div>
-        <h2 className="m-0 text-lg font-extrabold">This view could not be rendered</h2>
+        <h2 className="m-0 text-lg font-extrabold">This page didn't load</h2>
         <p className="subtle m-0 mt-1 text-sm">
-          {error?.message ?? 'An unexpected error occurred while building this page.'}
+          {error?.message ?? 'Something in the loan data stopped this page from drawing.'}
         </p>
         <div className="mt-4">
           <button className="btn btn-primary" onClick={onReset} type="button">

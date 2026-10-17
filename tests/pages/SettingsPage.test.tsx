@@ -1,73 +1,88 @@
 import { act } from 'react';
-import { createRoot } from 'react-dom/client';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test, vi } from 'vitest';
 
+import type { AppearancePrefs } from '../../src/app/storage';
 import { sampleLoan } from '../../src/config/sampleLoan';
 import { buildLoanAnalysis } from '../../src/features/loan/loanEngine';
 import { SettingsPage } from '../../src/pages/SettingsPage';
+import { buttonByText, click, render } from '../render';
 
-describe('settings data safety', () => {
-  test('confirms before restoring default data', () => {
-    const confirm = vi
-      .spyOn(window, 'confirm')
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(true);
+function page(overrides: {
+  onResetData?: () => void;
+  onPrefsChange?: (prefs: AppearancePrefs) => void;
+}) {
+  return (
+    <SettingsPage
+      analysis={buildLoanAnalysis(sampleLoan.loan, '2026-07-02')}
+      profile={sampleLoan}
+      datasetId="sample"
+      vaultAvailable
+      prefs={{ theme: 'dark', palette: 'carbon' }}
+      onPrefsChange={overrides.onPrefsChange ?? (() => undefined)}
+      onResetData={overrides.onResetData ?? (() => undefined)}
+      onUnlock={() => Promise.resolve()}
+      onLock={() => Promise.resolve()}
+    />
+  );
+}
+
+describe('settings', () => {
+  test('asks in its own dialog before restoring default data, and keeps the theme', () => {
+    const confirm = vi.spyOn(window, 'confirm');
     const onResetData = vi.fn();
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
+    const { container, cleanup } = render(page({ onResetData }));
+    const button = buttonByText(container, 'Restore default data');
+    const dialog = () => container.querySelector<HTMLElement>('[role="alertdialog"]');
 
-    act(() => {
-      root.render(
-        <SettingsPage
-          analysis={buildLoanAnalysis(sampleLoan.loan, '2026-07-02')}
-          profile={sampleLoan}
-          datasetId="sample"
-          vaultAvailable
-          prefs={{ theme: 'dark', palette: 'carbon' }}
-          onPrefsChange={() => undefined}
-          onResetData={onResetData}
-          onUnlock={() => Promise.resolve()}
-          onLock={() => Promise.resolve()}
-        />,
-      );
-    });
+    expect(container.textContent).toContain('Your theme stays as it is.');
+    expect(button?.className).toContain('btn-quiet-danger');
 
-    const button = Array.from(container.querySelectorAll('button')).find((item) =>
-      item.textContent?.includes('Restore default data'),
-    );
-    expect(button).toBeTruthy();
-
-    act(() => button?.click());
+    click(button);
+    expect(dialog()?.textContent).toContain('Restore the default data?');
+    click(buttonByText(dialog() as HTMLElement, 'Cancel'));
+    expect(dialog()).toBeNull();
     expect(onResetData).not.toHaveBeenCalled();
-    act(() => button?.click());
+
+    click(button);
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+    expect(dialog()).toBeNull();
+
+    click(button);
+    click(buttonByText(dialog() as HTMLElement, 'Restore default data'));
     expect(onResetData).toHaveBeenCalledTimes(1);
+    expect(dialog()).toBeNull();
+    expect(confirm).not.toHaveBeenCalled();
 
     confirm.mockRestore();
-    act(() => root.unmount());
-    container.remove();
+    cleanup();
   });
 
-  test('shows the sample loan terms and an ambiguous unlock control', () => {
-    const markup = renderToStaticMarkup(
-      <SettingsPage
-        analysis={buildLoanAnalysis(sampleLoan.loan, '2026-07-02')}
-        profile={sampleLoan}
-        datasetId="sample"
-        vaultAvailable
-        prefs={{ theme: 'dark', palette: 'carbon' }}
-        onPrefsChange={() => undefined}
-        onResetData={() => undefined}
-        onUnlock={() => Promise.resolve()}
-        onLock={() => Promise.resolve()}
-      />,
-    );
+  test('shows loan terms as text, not as inputs that look editable', () => {
+    const { container, cleanup } = render(page({}));
+    const text = container.textContent ?? '';
 
-    expect(markup).toContain('Sample Bank');
-    expect(markup).toContain('₹45,00,000');
-    expect(markup).toContain('9.15%');
-    expect(markup).toContain('20 yr');
-    expect(markup).toContain('unlock set a');
+    expect(text).toContain('Sample loan from Sample Bank');
+    expect(text).toContain('₹45,00,000');
+    expect(text).toContain('9.15%, floating');
+    expect(text).toContain('20 yr (240 EMIs)');
+    expect(text).toContain('The 1st of each month');
+    expect(container.querySelectorAll('input')).toHaveLength(0);
+    expect(buttonByText(container, 'unlock set a')).toBeTruthy();
+    cleanup();
+  });
+
+  test('switches theme and palette with toggle buttons', () => {
+    const onPrefsChange = vi.fn();
+    const { container, cleanup } = render(page({ onPrefsChange }));
+
+    expect(buttonByText(container, 'Dark')?.getAttribute('aria-pressed')).toBe('true');
+    click(buttonByText(container, 'Light'));
+    click(buttonByText(container, 'Cocoa'));
+
+    expect(onPrefsChange).toHaveBeenNthCalledWith(1, { theme: 'light', palette: 'carbon' });
+    expect(onPrefsChange).toHaveBeenNthCalledWith(2, { theme: 'dark', palette: 'cocoa' });
+    cleanup();
   });
 });

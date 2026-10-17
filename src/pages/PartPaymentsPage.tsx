@@ -1,9 +1,19 @@
-import { Plus, Trash2 } from 'lucide-react';
+import { HandCoins, Trash2 } from 'lucide-react';
+import type { CSSProperties } from 'react';
 
 import { DraftDateInput, DraftNumberInput } from '../components/DraftInputs';
-import { Card, StatCard } from '../components/Primitives';
+import {
+  AddEventForm,
+  EventStat,
+  InterestEffect,
+  LengthEffect,
+  UndoNotice,
+  useUndoable,
+} from '../components/EventEditing';
+import { Card, EmptyState, StatCard } from '../components/Primitives';
 import type { LoanAnalysis, PartPayment, PartPaymentImpact } from '../features/loan/loanEngine';
-import { formatDuration, formatInrShort, formatMonthYear } from '../utils/format';
+import { formatDate, formatInr, formatInrShort, formatMonthYear, pluralize } from '../utils/format';
+import { interestShift, lengthShift, timeShift } from '../utils/savings';
 
 type PartPaymentsPageProps = {
   analysis: LoanAnalysis;
@@ -11,8 +21,15 @@ type PartPaymentsPageProps = {
   onChange: (partPayments: PartPayment[]) => void;
 };
 
+const AMOUNT_HINT = 'Enter an amount of at least ₹1.';
+
+const COLUMNS = {
+  '--event-columns':
+    '150px 150px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 0.9fr) 36px',
+} as CSSProperties;
+
 /**
- * Renders the part-payment ledger and impact page.
+ * Renders the part-payment ledger with what each payment did to the loan.
  *
  * @param props - Part-payment page props.
  * @param props.analysis - Loan analysis containing prepayment impacts.
@@ -21,107 +38,219 @@ type PartPaymentsPageProps = {
  * @returns Part payments page element.
  */
 export function PartPaymentsPage({ analysis, partPayments, onChange }: PartPaymentsPageProps) {
-  const totalMonths = analysis.partPaymentCategoryImpact.monthsSaved;
-  const totalInterest = analysis.partPaymentCategoryImpact.interestSaved;
-  const newEventDate = analysis.nextRow?.date ?? analysis.actual.rows.at(-1)?.date ?? '';
-  const newEventAmount = partPayments.at(-1)?.amount ?? 100_000;
+  const undo = useUndoable<PartPayment>();
+  const removed = undo.removed;
+  const minDate = analysis.actual.rows[0]?.date ?? '';
+  const category = analysis.partPaymentCategoryImpact;
+  const totals = sumImpacts(analysis.partPaymentImpacts);
+  const totalPaid = partPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const best = bestPayment(partPayments, analysis.partPaymentImpacts);
+
+  const remove = (index: number): void => {
+    const item = partPayments[index];
+    if (item !== undefined) {
+      undo.remember(
+        item,
+        `Part payment of ${formatInrShort(item.amount)} on ${formatDate(item.date)} removed.`,
+      );
+      onChange(partPayments.filter((_, itemIndex) => itemIndex !== index));
+    }
+  };
 
   return (
-    <div className="content">
-      <div className="kpi-grid">
-        <StatCard label="Prepayments" value={partPayments.length} />
+    <div className="content stack">
+      {/* The longest figure goes first: on a phone the first card gets the full width. */}
+      <div className="kpi-grid is-three">
         <StatCard
-          label="Total prepaid"
-          value={formatInrShort(analysis.actual.summary.totalPrepayment)}
+          label="If you had made none"
+          value={category.monthsSaved === 0 ? 'Same length' : lengthShift(-category.monthsSaved)}
+          detail={`${interestShift(-category.interestSaved)}, with the same rate changes`}
         />
-        <StatCard label="Months saved" value={totalMonths} detail={formatDuration(totalMonths)} />
-        <StatCard label="Interest avoided" value={formatInrShort(totalInterest)} />
-      </div>
-
-      <div className="section-grid">
-        <Card
-          eyebrow="Prepayment ledger"
-          title="All part payments"
-          subtitle="Event impacts are chronological incremental estimates; the category total holds rates fixed."
-          action={
-            <button
-              className="btn btn-primary"
-              onClick={() =>
-                onChange(
-                  sortPayments([...partPayments, { date: newEventDate, amount: newEventAmount }]),
-                )
-              }
-            >
-              <Plus size={16} />
-              Add prepayment
-            </button>
+        <StatCard
+          label="Paid on top of EMIs"
+          value={formatInrShort(totalPaid)}
+          detail={`Across ${pluralize(partPayments.length, 'part payment')}`}
+        />
+        <StatCard
+          label="Best value"
+          value={best ? formatMonthYear(best.date) : 'None yet'}
+          detail={
+            best
+              ? 'This payment saved the most interest for each rupee paid'
+              : 'Add a part payment to see what it saves'
           }
-        >
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th className="numeric">Amount</th>
-                  <th className="numeric">Months saved</th>
-                  <th className="numeric">Interest saved</th>
-                  <th className="numeric">Simple interest</th>
-                  <th className="numeric">Lifetime saving ratio</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {partPayments.map((payment, index) => (
-                  <PartPaymentRow
-                    key={`${payment.date}-${index}`}
-                    impact={analysis.partPaymentImpacts[index]}
-                    payment={payment}
-                    startDate={analysis.actual.rows[0]?.date ?? ''}
-                    onUpdate={(patch) => updatePayment(partPayments, index, patch, onChange)}
-                    onRemove={() => removePayment(partPayments, index, onChange)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        <Card
-          eyebrow="Compounding effect"
-          title={`${formatInrShort(analysis.actual.summary.totalPrepayment)} → ${formatInrShort(
-            totalInterest,
-          )} saved`}
-        >
-          <div className="grid gap-4">
-            {partPayments.map((payment, index) => {
-              const impact = analysis.partPaymentImpacts[index];
-              const ratio = payment.amount > 0 ? (impact?.interestSaved ?? 0) / payment.amount : 0;
-
-              return (
-                <div key={`${payment.date}-bar`}>
-                  <div className="mb-2 flex justify-between gap-3 text-sm font-bold">
-                    <span>
-                      {formatMonthYear(payment.date)} · {formatInrShort(payment.amount)}
-                    </span>
-                    <span className="text-[var(--jade)]">
-                      +{formatInrShort(impact?.interestSaved ?? 0)}
-                    </span>
-                  </div>
-                  <div className="flex h-2 overflow-hidden rounded-full">
-                    <div className="bg-[var(--violet)]" style={{ flex: 1 }} />
-                    <div className="bg-[var(--jade)]" style={{ flex: Math.max(0.05, ratio) }} />
-                  </div>
-                  <div className="subtle mt-1 flex justify-between text-xs">
-                    <span>You paid</span>
-                    <span>You saved {ratio.toFixed(2)}x</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
+        />
       </div>
+
+      <Card
+        eyebrow="Your part payments"
+        title="What each payment did"
+        subtitle="Enter the date the bank posted the payment. Part-payment interest runs up to that day. Changes save as you type."
+      >
+        <div className="stack gap-4">
+          {removed && (
+            <UndoNotice
+              key={removed.label}
+              onDismiss={undo.forget}
+              onUndo={() => {
+                onChange(sortPayments([...partPayments, removed.item]));
+                undo.forget();
+              }}
+            >
+              {removed.label}
+            </UndoNotice>
+          )}
+
+          {partPayments.length === 0 ? (
+            <EmptyState
+              icon={<HandCoins size={32} />}
+              title="No part payments yet"
+              hint="Add a lump sum you paid on top of an EMI to see how much time and interest it saves."
+            />
+          ) : (
+            <div className="event-list has-stats is-wide" style={COLUMNS}>
+              <div className="event-row is-head" aria-hidden="true">
+                <span>Date</span>
+                <span>Amount</span>
+                <span className="numeric">Loan length</span>
+                <span className="numeric">Interest</span>
+                <span className="numeric">Saved per ₹1</span>
+                <span className="numeric">Part-payment interest</span>
+                <span />
+              </div>
+              {partPayments.map((payment, index) => (
+                <PaymentRow
+                  impact={analysis.partPaymentImpacts[index]}
+                  index={index}
+                  key={`${payment.date}-${index}`}
+                  minDate={minDate}
+                  payment={payment}
+                  onRemove={() => remove(index)}
+                  onUpdate={(patch) => onChange(updatePayment(partPayments, index, patch))}
+                />
+              ))}
+              <div className="event-row is-foot">
+                <span className="cell-foot-label">
+                  All {pluralize(partPayments.length, 'payment')}
+                </span>
+                <div className="cell-stats">
+                  <EventStat label="Loan length">
+                    <LengthEffect months={totals.months} />
+                  </EventStat>
+                  <EventStat label="Interest">
+                    <InterestEffect amount={totals.interest} />
+                  </EventStat>
+                  <EventStat label="Saved per ₹1">
+                    {totalPaid > 0 ? `₹${(totals.interest / totalPaid).toFixed(2)}` : '₹0.00'}
+                  </EventStat>
+                  <EventStat label="Part-payment interest">
+                    {formatInr(totals.simpleInterest)}
+                  </EventStat>
+                </div>
+                <span />
+              </div>
+            </div>
+          )}
+
+          <p className="footnote m-0">
+            Each row counts only what that payment did on top of every earlier change, rate changes
+            included. Add these rows to the ones on the Rate changes page and you get the full move
+            on the dashboard: {timeShift(analysis.monthsSaved)} and{' '}
+            {interestShift(analysis.interestSaved)}. The card at the top asks a different question,
+            so its figure differs.
+          </p>
+
+          <AddEventForm
+            defaultDate={analysis.nextRow?.date ?? minDate}
+            idPrefix="new-payment"
+            minDate={minDate}
+            minValue={1}
+            submitLabel="Add part payment"
+            valueHint={AMOUNT_HINT}
+            valueLabel="Amount"
+            valuePlaceholder="1,00,000"
+            valuePrefix="₹"
+            onAdd={(date, amount) => {
+              undo.forget();
+              onChange(sortPayments([...partPayments, { date, amount }]));
+            }}
+          />
+        </div>
+      </Card>
     </div>
+  );
+}
+
+type PaymentRowProps = {
+  payment: PartPayment;
+  impact: PartPaymentImpact | undefined;
+  index: number;
+  minDate: string;
+  onUpdate: (patch: Partial<PartPayment>) => void;
+  onRemove: () => void;
+};
+
+function PaymentRow({ payment, impact, index, minDate, onUpdate, onRemove }: PaymentRowProps) {
+  const interestSaved = impact?.interestSaved ?? 0;
+
+  return (
+    <div className="event-row">
+      <DraftDateInput
+        ariaLabel={`Date of part payment ${index + 1}`}
+        min={minDate}
+        value={payment.date}
+        onCommit={(date) => onUpdate({ date })}
+      />
+      <DraftNumberInput
+        ariaLabel={`Amount of part payment ${index + 1}`}
+        grouped
+        invalidHint={AMOUNT_HINT}
+        min={1}
+        prefix="₹"
+        value={payment.amount}
+        onCommit={(amount) => onUpdate({ amount })}
+      />
+      <div className="cell-stats">
+        <EventStat label="Loan length">
+          <LengthEffect months={impact?.monthsSaved ?? 0} />
+        </EventStat>
+        <EventStat label="Interest">
+          <InterestEffect amount={interestSaved} />
+        </EventStat>
+        <EventStat label="Saved per ₹1">
+          {payment.amount > 0 ? `₹${(interestSaved / payment.amount).toFixed(2)}` : '₹0.00'}
+        </EventStat>
+        <EventStat label="Part-payment interest">
+          {formatInr(impact?.simpleInterest ?? 0)}
+        </EventStat>
+      </div>
+      <button
+        aria-label={`Delete part payment ${index + 1}`}
+        className="icon-btn cell-action"
+        type="button"
+        onClick={onRemove}
+      >
+        <Trash2 aria-hidden="true" size={15} />
+      </button>
+    </div>
+  );
+}
+
+function bestPayment(payments: PartPayment[], impacts: PartPaymentImpact[]) {
+  return payments.reduce<{ date: string; ratio: number } | undefined>((best, payment, index) => {
+    const ratio = payment.amount > 0 ? (impacts[index]?.interestSaved ?? 0) / payment.amount : 0;
+    return best === undefined || ratio > best.ratio ? { date: payment.date, ratio } : best;
+  }, undefined);
+}
+
+function sumImpacts(impacts: Array<PartPaymentImpact | undefined>) {
+  return impacts.reduce(
+    (sum, impact) => ({
+      months: sum.months + (impact?.monthsSaved ?? 0),
+      interest: sum.interest + (impact?.interestSaved ?? 0),
+      simpleInterest: sum.simpleInterest + (impact?.simpleInterest ?? 0),
+    }),
+    { months: 0, interest: 0, simpleInterest: 0 },
   );
 }
 
@@ -129,84 +258,12 @@ function updatePayment(
   partPayments: PartPayment[],
   index: number,
   patch: Partial<PartPayment>,
-  onChange: (partPayments: PartPayment[]) => void,
-): void {
-  onChange(
-    sortPayments(
-      partPayments.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
-    ),
+): PartPayment[] {
+  return sortPayments(
+    partPayments.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
   );
-}
-
-function removePayment(
-  partPayments: PartPayment[],
-  index: number,
-  onChange: (partPayments: PartPayment[]) => void,
-): void {
-  onChange(partPayments.filter((_, itemIndex) => itemIndex !== index));
 }
 
 function sortPayments(partPayments: PartPayment[]): PartPayment[] {
   return [...partPayments].sort((left, right) => left.date.localeCompare(right.date));
-}
-
-type PartPaymentRowProps = {
-  payment: PartPayment;
-  impact: PartPaymentImpact | undefined;
-  startDate: string;
-  onUpdate: (patch: Partial<PartPayment>) => void;
-  onRemove: () => void;
-};
-
-/**
- * Renders a single editable prepayment row.
- *
- * Holds local drafts for the date and amount inputs so transient invalid values
- * (an empty field, a zero, a partially typed date) never propagate to the loan
- * engine. A value is only committed once it parses as a valid calendar date and a
- * positive finite amount.
- */
-function PartPaymentRow({ payment, impact, startDate, onUpdate, onRemove }: PartPaymentRowProps) {
-  const interestSaved = impact?.interestSaved ?? 0;
-  const ratio = payment.amount > 0 ? interestSaved / payment.amount : 0;
-
-  return (
-    <tr>
-      <td>
-        <DraftDateInput
-          ariaLabel="Prepayment date"
-          className="input min-w-40"
-          min={startDate}
-          value={payment.date}
-          onCommit={(date) => onUpdate({ date })}
-        />
-      </td>
-      <td className="numeric">
-        <DraftNumberInput
-          ariaLabel="Prepayment amount"
-          className="input min-w-32 text-right"
-          min={0.01}
-          step={10_000}
-          value={payment.amount}
-          onCommit={(amount) => onUpdate({ amount })}
-        />
-      </td>
-      <td className="numeric font-bold">{impact?.monthsSaved ?? 0}</td>
-      <td className="numeric font-bold text-[var(--jade)]">{formatInrShort(interestSaved)}</td>
-      <td className="numeric subtle">{formatInrShort(impact?.simpleInterest ?? 0)}</td>
-      <td className="numeric">
-        <span className="chip chip-jade">{ratio.toFixed(2)}×</span>
-      </td>
-      <td>
-        <button
-          className="icon-btn"
-          onClick={onRemove}
-          aria-label="Delete prepayment"
-          type="button"
-        >
-          <Trash2 size={15} />
-        </button>
-      </td>
-    </tr>
-  );
 }

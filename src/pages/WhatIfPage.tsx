@@ -1,521 +1,519 @@
-import { HelpCircle, Plus, Trash2, TrendingDown, WalletCards } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { FlaskConical, Plus, Trash2 } from 'lucide-react';
+import { useMemo, useState, type CSSProperties } from 'react';
 
-import { Card, EmptyState } from '../components/Primitives';
+import { createEmptyScenario, type WhatIfScenario } from '../app/storage';
 import { DraftDateInput, DraftNumberInput } from '../components/DraftInputs';
-import type { WhatIfScenario } from '../app/storage';
+import { AddEventForm, UndoNotice, useUndoable } from '../components/EventEditing';
+import { Card, EmptyState, toneClass, toneOf } from '../components/Primitives';
+import { classNames } from '../utils/classNames';
 import {
   createSchedule,
   type LoanAnalysis,
   type LoanConfig,
-  type PartPayment,
-  type RateChange,
+  type LoanSchedule,
 } from '../features/loan/loanEngine';
-import { formatDuration, formatInrShort, formatMonthYear } from '../utils/format';
+import {
+  formatDuration,
+  formatInrShort,
+  formatMonthYear,
+  formatPercent,
+  pluralize,
+} from '../utils/format';
+import { RATE_HINT, RATE_LIMITS, rateConflict } from '../utils/rates';
+import { interestShift, timeShift } from '../utils/savings';
 
 type WhatIfPageProps = {
   analysis: LoanAnalysis;
   baseConfig: LoanConfig;
   scenarios: WhatIfScenario[];
-  onAddScenario: () => void;
   onChange: (scenarios: WhatIfScenario[]) => void;
 };
 
+const EVENT_COLUMNS = { '--event-columns': 'minmax(0, 1fr) minmax(0, 1fr) 36px' } as CSSProperties;
+
+const AMOUNT_HINT = 'Enter an amount of at least ₹1.';
+
 /**
- * Renders the multi-scenario what-if simulator.
+ * Renders the what-if simulator: named scenarios that add pretend rate changes and part
+ * payments on top of the real ones, compared against the current and original plans.
  *
  * @param props - What-if props.
  * @param props.analysis - Current loan analysis for baseline comparison.
  * @param props.baseConfig - Current loan config used as the scenario baseline.
  * @param props.scenarios - Persisted what-if scenarios.
- * @param props.onAddScenario - Callback that creates an empty scenario.
  * @param props.onChange - Callback for persisting scenario edits.
- * @returns What-if simulator page element.
+ * @returns What-if page element.
  */
-export function WhatIfPage({
-  analysis,
-  baseConfig,
-  scenarios,
-  onAddScenario,
-  onChange,
-}: WhatIfPageProps) {
+export function WhatIfPage({ analysis, baseConfig, scenarios, onChange }: WhatIfPageProps) {
   const [activeId, setActiveId] = useState<string | null>(scenarios[0]?.id ?? null);
   const activeScenario = scenarios.find((scenario) => scenario.id === activeId) ?? scenarios[0];
-  const scenarioResults = useMemo(
+  const results = useMemo(
     () =>
-      scenarios.map((scenario) => ({
-        scenario,
-        schedule: createSchedule({
-          ...baseConfig,
-          rateChanges: [...baseConfig.rateChanges, ...scenario.rateChanges],
-          partPayments: [...baseConfig.partPayments, ...scenario.partPayments],
-        }),
-      })),
+      new Map(
+        scenarios.map((scenario) => [
+          scenario.id,
+          createSchedule({
+            ...baseConfig,
+            rateChanges: [...baseConfig.rateChanges, ...scenario.rateChanges],
+            partPayments: [...baseConfig.partPayments, ...scenario.partPayments],
+          }),
+        ]),
+      ),
     [baseConfig, scenarios],
   );
-  const activeResult = scenarioResults.find((result) => result.scenario.id === activeScenario?.id);
-  const activeMonthsSaved =
-    activeResult === undefined
-      ? 0
-      : analysis.actual.summary.totalMonths - activeResult.schedule.summary.totalMonths;
-  const activeInterestSaved =
-    activeResult === undefined
-      ? 0
-      : analysis.actual.summary.totalInterest - activeResult.schedule.summary.totalInterest;
+  const nextDate = analysis.nextRow?.date ?? baseConfig.startDate;
+  const undo = useUndoable<{ scenario: WhatIfScenario; index: number }>();
+  const removed = undo.removed;
+
+  const addScenario = (
+    events?: Pick<WhatIfScenario, 'rateChanges' | 'partPayments'>,
+    name?: string,
+  ) => {
+    const created = createEmptyScenario(scenarios, events);
+    const scenario = name ? { ...created, name } : created;
+    undo.forget();
+    onChange([...scenarios, scenario]);
+    setActiveId(scenario.id);
+  };
+
+  const removeScenario = (scenario: WhatIfScenario): void => {
+    const index = scenarios.findIndex((item) => item.id === scenario.id);
+    undo.remember({ scenario, index }, `${scenario.name || 'Untitled'} deleted.`);
+    onChange(scenarios.filter((item) => item.id !== scenario.id));
+    setActiveId(null);
+  };
+
+  const restoreScenario = (): void => {
+    if (removed === null) {
+      return;
+    }
+
+    const next = [...scenarios];
+    next.splice(removed.item.index, 0, removed.item.scenario);
+    onChange(next);
+    setActiveId(removed.item.scenario.id);
+    undo.forget();
+  };
 
   return (
-    <div className="content">
-      <section
-        className="hero"
-        style={
-          {
-            '--hero-from': '#2a2148',
-            '--hero-mid': '#765fc2',
-            '--hero-to': '#e89568',
-          } as React.CSSProperties
-        }
-      >
-        <div>
-          <div className="label mb-4 text-[var(--teal)]">Simulate the future</div>
-          <h1>
-            What if you
-            <br />
-            <em>did even more?</em>
-          </h1>
-          <p className="mt-5 max-w-[560px] text-base leading-7 text-white/85">
-            Build named scenarios with their own prepayments and rate revisions, then compare them
-            against your original and current plans.
-          </p>
-        </div>
-        <div className="hero-stats">
-          <HeroScenarioStat
-            label="Active scenario"
-            value={activeScenario?.name ?? 'None'}
-            detail={activeScenario ? 'Add events to model impact' : 'Create a scenario'}
-          />
-          <HeroScenarioStat
-            label="Extra saved"
-            value={formatScenarioMonths(activeMonthsSaved)}
-            detail={formatScenarioInterest(activeInterestSaved)}
-          />
-        </div>
-      </section>
-
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        {scenarios.map((scenario) => (
-          <button
-            className="btn"
-            key={scenario.id}
-            onClick={() => setActiveId(scenario.id)}
-            style={{ borderColor: scenario.id === activeScenario?.id ? scenario.color : undefined }}
-          >
-            <span className="h-2 w-2 rounded-sm" style={{ background: scenario.color }} />
-            {scenario.name}
-          </button>
-        ))}
-        <button className="btn btn-primary" onClick={onAddScenario}>
-          <Plus size={16} />
-          New scenario
-        </button>
-      </div>
-
-      {activeScenario === undefined ? (
-        <Card className="mt-6">
-          <EmptyState
-            icon={<HelpCircle size={36} />}
-            title="No what-if scenarios yet."
-            hint="Create one to add hypothetical prepayments or rate changes."
-          />
-        </Card>
-      ) : (
-        <ScenarioEditor
-          scenario={activeScenario}
-          scenarios={scenarios}
-          startDate={baseConfig.startDate}
-          newEventDate={analysis.nextRow?.date ?? baseConfig.startDate}
-          onChange={onChange}
-        />
+    <div className="content stack">
+      {removed && (
+        <UndoNotice key={removed.label} onDismiss={undo.forget} onUndo={restoreScenario}>
+          {removed.label}
+        </UndoNotice>
       )}
 
-      <Card className="mt-6" eyebrow="Side-by-side outcome" title="All scenarios compared">
-        <div className="grid gap-4 xl:grid-cols-4">
-          <Comparison
-            title="Original"
-            subtitle="No rate changes or prepayments"
-            payoff={analysis.original.summary.payoffDate}
-            months={analysis.original.summary.totalMonths}
-            interest={analysis.original.summary.totalInterest}
+      {activeScenario === undefined ? (
+        <Card>
+          <EmptyState
+            icon={<FlaskConical size={34} />}
+            title="No scenarios yet"
+            hint="A scenario adds pretend rate changes or part payments on top of your real ones, so you can see the effect before you act. Start from one of these:"
+          >
+            <div className="preset-list">
+              <button
+                className="btn"
+                type="button"
+                onClick={() =>
+                  addScenario(
+                    { rateChanges: [], partPayments: [{ date: nextDate, amount: 100_000 }] },
+                    `₹1L extra in ${formatMonthYear(nextDate)}`,
+                  )
+                }
+              >
+                Pay ₹1,00,000 extra next month
+              </button>
+              <PresetRateCut analysis={analysis} nextDate={nextDate} onAdd={addScenario} />
+              <button className="btn btn-primary" type="button" onClick={() => addScenario()}>
+                <Plus aria-hidden="true" size={16} />
+                Empty scenario
+              </button>
+            </div>
+          </EmptyState>
+        </Card>
+      ) : (
+        <>
+          <div className="scenario-tabs" role="tablist" aria-label="Scenarios">
+            {scenarios.map((scenario) => (
+              <button
+                aria-selected={scenario.id === activeScenario.id}
+                className="scenario-tab"
+                key={scenario.id}
+                role="tab"
+                type="button"
+                onClick={() => setActiveId(scenario.id)}
+              >
+                <span className="swatch" style={{ background: scenario.color }} />
+                {scenario.name || 'Untitled'}
+              </button>
+            ))}
+            <button className="btn btn-primary" type="button" onClick={() => addScenario()}>
+              <Plus aria-hidden="true" size={16} />
+              New scenario
+            </button>
+          </div>
+
+          <ScenarioHeader
+            scenario={activeScenario}
+            onDelete={() => removeScenario(activeScenario)}
+            onRename={(name) => patchScenario(scenarios, activeScenario, { name }, onChange)}
           />
-          <Comparison
-            title="Current plan"
-            subtitle="Your actual events"
-            payoff={analysis.actual.summary.payoffDate}
-            months={analysis.actual.summary.totalMonths}
-            interest={analysis.actual.summary.totalInterest}
-            accent
-          />
-          {scenarioResults.map((result) => (
-            <Comparison
-              key={result.scenario.id}
-              title={result.scenario.name}
-              subtitle={`${result.scenario.rateChanges.length} rates · ${result.scenario.partPayments.length} prepays`}
-              payoff={result.schedule.summary.payoffDate}
-              months={result.schedule.summary.totalMonths}
-              interest={result.schedule.summary.totalInterest}
-              color={result.scenario.color}
-            />
-          ))}
+        </>
+      )}
+
+      <Card
+        eyebrow="Comparison"
+        title="Every plan side by side"
+        subtitle="The original plan has no rate changes or part payments. Your current plan has the real ones. Each scenario adds its own on top."
+      >
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Plan</th>
+                <th className="numeric col-optional">Payoff</th>
+                <th className="numeric col-optional">Length</th>
+                <th className="numeric col-optional">Interest</th>
+                <th className="cell-wrap">Against your current plan</th>
+              </tr>
+            </thead>
+            <tbody>
+              <ComparisonRow
+                current={analysis.actual}
+                name="Original plan"
+                schedule={analysis.original}
+              />
+              <ComparisonRow
+                current={analysis.actual}
+                name="Current plan"
+                schedule={analysis.actual}
+              />
+              {scenarios.map((scenario) => {
+                const schedule = results.get(scenario.id);
+                return schedule ? (
+                  <ComparisonRow
+                    active={scenario.id === activeScenario?.id}
+                    color={scenario.color}
+                    current={analysis.actual}
+                    key={scenario.id}
+                    name={scenario.name || 'Untitled'}
+                    schedule={schedule}
+                  />
+                ) : null;
+              })}
+            </tbody>
+          </table>
         </div>
       </Card>
-    </div>
-  );
-}
 
-type ScenarioEditorProps = {
-  scenario: WhatIfScenario;
-  scenarios: WhatIfScenario[];
-  startDate: string;
-  newEventDate?: string;
-  onChange: (scenarios: WhatIfScenario[]) => void;
-};
-
-function ScenarioEditor({
-  scenario,
-  scenarios,
-  startDate,
-  newEventDate = startDate,
-  onChange,
-}: ScenarioEditorProps) {
-  return (
-    <div className="section-grid">
-      <Card
-        eyebrow={`${scenario.name} · prepayments`}
-        title="Hypothetical part payments"
-        action={
-          <button
-            className="btn btn-primary"
-            onClick={() =>
-              patchScenario(
-                scenarios,
-                scenario.id,
-                {
-                  partPayments: [...scenario.partPayments, { date: newEventDate, amount: 100_000 }],
-                },
-                onChange,
-              )
-            }
-          >
-            <Plus size={16} />
-            Add
-          </button>
-        }
-      >
-        <ScenarioName
-          scenario={scenario}
-          scenarios={scenarios}
-          startDate={startDate}
-          onChange={onChange}
+      {activeScenario && (
+        <ScenarioEvents
+          baseConfig={baseConfig}
+          currentRate={analysis.nextRow?.rate ?? analysis.actual.rows.at(-1)?.rate ?? 0}
+          nextDate={nextDate}
+          scenario={activeScenario}
+          onPatch={(patch) => patchScenario(scenarios, activeScenario, patch, onChange)}
         />
-        {scenario.partPayments.length === 0 ? (
-          <EmptyState
-            icon={<WalletCards size={36} />}
-            title="No hypothetical prepayments yet."
-            hint="Add one to see how it affects payoff."
-          />
-        ) : (
-          <PaymentRows
-            scenario={scenario}
-            scenarios={scenarios}
-            startDate={startDate}
-            onChange={onChange}
-          />
-        )}
-      </Card>
-
-      <Card
-        eyebrow={`${scenario.name} · rate revisions`}
-        title="Hypothetical rate changes"
-        action={
-          <button
-            className="btn btn-primary"
-            onClick={() =>
-              patchScenario(
-                scenarios,
-                scenario.id,
-                { rateChanges: [...scenario.rateChanges, { date: newEventDate, rate: 7 }] },
-                onChange,
-              )
-            }
-          >
-            <Plus size={16} />
-            Add
-          </button>
-        }
-      >
-        {scenario.rateChanges.length === 0 ? (
-          <EmptyState
-            icon={<TrendingDown size={36} />}
-            title="No hypothetical rate changes yet."
-            hint="Add one to forecast tenure impact."
-          />
-        ) : (
-          <RateRows
-            scenario={scenario}
-            scenarios={scenarios}
-            startDate={startDate}
-            onChange={onChange}
-          />
-        )}
-      </Card>
+      )}
     </div>
   );
-}
-
-function ScenarioName({ scenario, scenarios, onChange }: ScenarioEditorProps) {
-  return (
-    <div className="mb-4 flex gap-3">
-      <input
-        className="input"
-        value={scenario.name}
-        onChange={(event) =>
-          patchScenario(scenarios, scenario.id, { name: event.target.value }, onChange)
-        }
-      />
-      <button
-        className="icon-btn"
-        onClick={() => onChange(scenarios.filter((item) => item.id !== scenario.id))}
-        aria-label="Delete scenario"
-      >
-        <Trash2 size={16} />
-      </button>
-    </div>
-  );
-}
-
-function PaymentRows({ scenario, scenarios, startDate, onChange }: ScenarioEditorProps) {
-  return (
-    <div className="grid gap-3">
-      {scenario.partPayments.map((payment, index) => (
-        <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]" key={`${payment.date}-${index}`}>
-          <DraftDateInput
-            ariaLabel={`Scenario prepayment date ${index + 1}`}
-            className="input"
-            min={startDate}
-            value={payment.date}
-            onCommit={(date) =>
-              updateScenarioPayment(scenario, scenarios, index, { date }, onChange)
-            }
-          />
-          <DraftNumberInput
-            ariaLabel={`Scenario prepayment amount ${index + 1}`}
-            className="input"
-            min={0.01}
-            step={10_000}
-            value={payment.amount}
-            onCommit={(amount) =>
-              updateScenarioPayment(scenario, scenarios, index, { amount }, onChange)
-            }
-          />
-          <button
-            className="icon-btn"
-            onClick={() => removeScenarioPayment(scenario, scenarios, index, onChange)}
-            aria-label="Remove scenario prepayment"
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RateRows({ scenario, scenarios, startDate, onChange }: ScenarioEditorProps) {
-  return (
-    <div className="grid gap-3">
-      {scenario.rateChanges.map((rate, index) => (
-        <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]" key={`${rate.date}-${index}`}>
-          <DraftDateInput
-            ariaLabel={`Scenario rate date ${index + 1}`}
-            className="input"
-            min={startDate}
-            value={rate.date}
-            onCommit={(date) => updateScenarioRate(scenario, scenarios, index, { date }, onChange)}
-          />
-          <DraftNumberInput
-            ariaLabel={`Scenario rate ${index + 1}`}
-            className="input"
-            min={0}
-            step={0.05}
-            value={rate.rate}
-            onCommit={(nextRate) =>
-              updateScenarioRate(scenario, scenarios, index, { rate: nextRate }, onChange)
-            }
-          />
-          <button
-            className="icon-btn"
-            onClick={() => removeScenarioRate(scenario, scenarios, index, onChange)}
-            aria-label="Remove scenario rate"
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Comparison({
-  title,
-  subtitle,
-  payoff,
-  months,
-  interest,
-  accent = false,
-  color,
-}: {
-  title: string;
-  subtitle: string;
-  payoff: string;
-  months: number;
-  interest: number;
-  accent?: boolean;
-  color?: string;
-}) {
-  return (
-    <div
-      className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)] p-5"
-      style={{ borderColor: color }}
-    >
-      <div className={accent ? 'text-[var(--primary)]' : ''}>
-        <div className="font-extrabold">{title}</div>
-        <div className="subtle mt-1 text-xs">{subtitle}</div>
-      </div>
-      <div className="mt-5 text-2xl font-extrabold">{formatMonthYear(payoff)}</div>
-      <div className="label mt-1">Payoff date</div>
-      <div className="mt-5 grid gap-2 text-sm">
-        <div className="flex justify-between">
-          <span className="subtle">Tenure</span>
-          <strong>{formatDuration(months)}</strong>
-        </div>
-        <div className="flex justify-between">
-          <span className="subtle">Interest</span>
-          <strong>{formatInrShort(interest)}</strong>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function HeroScenarioStat({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="hero-stat">
-      <div className="label text-white/70">{label}</div>
-      <div className="mt-2 text-2xl font-extrabold">{value}</div>
-      <div className="mt-1 text-sm font-semibold text-[var(--teal)]">{detail}</div>
-    </div>
-  );
-}
-
-function formatScenarioMonths(months: number): string {
-  if (months === 0) {
-    return '0 mo';
-  }
-
-  const prefix = months > 0 ? '+' : '-';
-  return `${prefix}${formatDuration(Math.abs(months))}`;
-}
-
-function formatScenarioInterest(amount: number): string {
-  if (amount === 0) {
-    return '₹0 interest saved';
-  }
-
-  if (amount > 0) {
-    return `+${formatInrShort(amount)} interest saved`;
-  }
-
-  return `${formatInrShort(Math.abs(amount))} extra interest`;
 }
 
 function patchScenario(
   scenarios: WhatIfScenario[],
-  id: string,
+  target: WhatIfScenario,
   patch: Partial<WhatIfScenario>,
   onChange: (scenarios: WhatIfScenario[]) => void,
 ): void {
-  onChange(scenarios.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  onChange(scenarios.map((item) => (item.id === target.id ? { ...item, ...patch } : item)));
 }
 
-function updateScenarioPayment(
-  scenario: WhatIfScenario,
-  scenarios: WhatIfScenario[],
-  index: number,
-  patch: Partial<PartPayment>,
-  onChange: (scenarios: WhatIfScenario[]) => void,
-): void {
-  patchScenario(
-    scenarios,
-    scenario.id,
-    {
-      partPayments: scenario.partPayments.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, ...patch } : item,
-      ),
-    },
-    onChange,
+function PresetRateCut({
+  analysis,
+  nextDate,
+  onAdd,
+}: {
+  analysis: LoanAnalysis;
+  nextDate: string;
+  onAdd: (events: Pick<WhatIfScenario, 'rateChanges' | 'partPayments'>, name: string) => void;
+}) {
+  const currentRate = analysis.nextRow?.rate ?? analysis.actual.rows.at(-1)?.rate ?? 0;
+  const cutRate = Math.max(RATE_LIMITS.min, Number((currentRate - 0.5).toFixed(2)));
+
+  return (
+    <button
+      className="btn"
+      type="button"
+      onClick={() =>
+        onAdd(
+          { rateChanges: [{ date: nextDate, rate: cutRate }], partPayments: [] },
+          `Rate down to ${formatPercent(cutRate)}`,
+        )
+      }
+    >
+      Rate drops to {formatPercent(cutRate)} next month
+    </button>
   );
 }
 
-function updateScenarioRate(
-  scenario: WhatIfScenario,
-  scenarios: WhatIfScenario[],
-  index: number,
-  patch: Partial<RateChange>,
-  onChange: (scenarios: WhatIfScenario[]) => void,
-): void {
-  patchScenario(
-    scenarios,
-    scenario.id,
-    {
-      rateChanges: scenario.rateChanges.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, ...patch } : item,
-      ),
-    },
-    onChange,
+type ScenarioHeaderProps = {
+  scenario: WhatIfScenario;
+  onRename: (name: string) => void;
+  onDelete: () => void;
+};
+
+function ScenarioHeader({ scenario, onRename, onDelete }: ScenarioHeaderProps) {
+  const events = scenario.partPayments.length + scenario.rateChanges.length;
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="grid min-w-[220px] flex-1 gap-1.5" htmlFor="scenario-name">
+          <span className="field-label">Scenario name</span>
+          <input
+            className="input"
+            id="scenario-name"
+            value={scenario.name}
+            onBlur={() => {
+              if (scenario.name.trim() === '') {
+                onRename('Untitled');
+              }
+            }}
+            onChange={(event) => onRename(event.target.value)}
+          />
+        </label>
+        <button className="btn btn-quiet-danger" type="button" onClick={onDelete}>
+          <Trash2 aria-hidden="true" size={15} />
+          Delete scenario
+        </button>
+      </div>
+      <p className="subtle m-0 mt-3 text-sm">
+        {events === 0
+          ? 'Add a pretend part payment or rate change below. The comparison updates as you go.'
+          : `Adds ${scenarioContents(scenario)} to your real ones. Its row in the comparison is highlighted.`}
+      </p>
+    </Card>
   );
 }
 
-function removeScenarioPayment(
-  scenario: WhatIfScenario,
-  scenarios: WhatIfScenario[],
-  index: number,
-  onChange: (scenarios: WhatIfScenario[]) => void,
-): void {
-  patchScenario(
-    scenarios,
-    scenario.id,
-    { partPayments: scenario.partPayments.filter((_, itemIndex) => itemIndex !== index) },
-    onChange,
+function scenarioContents(scenario: WhatIfScenario): string {
+  const parts = [
+    scenario.partPayments.length > 0 && pluralize(scenario.partPayments.length, 'part payment'),
+    scenario.rateChanges.length > 0 && pluralize(scenario.rateChanges.length, 'rate change'),
+  ];
+
+  return parts.filter(Boolean).join(' and ');
+}
+
+type ScenarioEventsProps = {
+  baseConfig: LoanConfig;
+  scenario: WhatIfScenario;
+  currentRate: number;
+  nextDate: string;
+  onPatch: (patch: Partial<WhatIfScenario>) => void;
+};
+
+function ScenarioEvents({
+  baseConfig,
+  scenario,
+  currentRate,
+  nextDate,
+  onPatch,
+}: ScenarioEventsProps) {
+  const minDate = baseConfig.startDate;
+  const allRates = [...baseConfig.rateChanges, ...scenario.rateChanges];
+
+  return (
+    <div className="split is-even">
+      <Card
+        eyebrow="Pretend part payments"
+        title="Extra lump sums"
+        subtitle="Added on top of the part payments you have already made."
+      >
+        <div className="stack gap-4">
+          <ScenarioEventList
+            emptyText="No extra part payments in this scenario."
+            events={scenario.partPayments.map((payment) => ({
+              date: payment.date,
+              value: payment.amount,
+            }))}
+            kind="payment"
+            minDate={minDate}
+            onChange={(events) =>
+              onPatch({
+                partPayments: events.map((event) => ({ date: event.date, amount: event.value })),
+              })
+            }
+          />
+          <AddEventForm
+            defaultDate={nextDate}
+            idPrefix="scenario-payment"
+            minDate={minDate}
+            minValue={1}
+            submitLabel="Add payment"
+            valueHint={AMOUNT_HINT}
+            valueLabel="Amount"
+            valuePlaceholder="1,00,000"
+            valuePrefix="₹"
+            onAdd={(date, amount) =>
+              onPatch({ partPayments: sortByDate([...scenario.partPayments, { date, amount }]) })
+            }
+          />
+        </div>
+      </Card>
+      <Card
+        eyebrow="Pretend rate changes"
+        title="Different rates"
+        subtitle="Each one sets the rate from its date onward, on top of your real rate changes."
+      >
+        <div className="stack gap-4">
+          <ScenarioEventList
+            emptyText="No rate changes in this scenario."
+            events={scenario.rateChanges.map((change) => ({
+              date: change.date,
+              value: change.rate,
+            }))}
+            kind="rate"
+            minDate={minDate}
+            onChange={(events) =>
+              onPatch({
+                rateChanges: events.map((event) => ({ date: event.date, rate: event.value })),
+              })
+            }
+          />
+          <AddEventForm
+            check={(date, rate) => rateConflict(date, rate, baseConfig.originalRate, allRates)}
+            defaultDate={nextDate}
+            idPrefix="scenario-rate"
+            maxValue={RATE_LIMITS.max}
+            minDate={minDate}
+            minValue={RATE_LIMITS.min}
+            submitLabel="Add rate"
+            valueHint={RATE_HINT}
+            valueLabel="New rate"
+            valuePlaceholder={currentRate.toFixed(2)}
+            valueSuffix="%"
+            onAdd={(date, rate) =>
+              onPatch({ rateChanges: sortByDate([...scenario.rateChanges, { date, rate }]) })
+            }
+          />
+        </div>
+      </Card>
+    </div>
   );
 }
 
-function removeScenarioRate(
-  scenario: WhatIfScenario,
-  scenarios: WhatIfScenario[],
-  index: number,
-  onChange: (scenarios: WhatIfScenario[]) => void,
-): void {
-  patchScenario(
-    scenarios,
-    scenario.id,
-    { rateChanges: scenario.rateChanges.filter((_, itemIndex) => itemIndex !== index) },
-    onChange,
+type ScenarioEvent = { date: string; value: number };
+
+function ScenarioEventList({
+  events,
+  kind,
+  minDate,
+  emptyText,
+  onChange,
+}: {
+  events: ScenarioEvent[];
+  kind: 'payment' | 'rate';
+  minDate: string;
+  emptyText: string;
+  onChange: (events: ScenarioEvent[]) => void;
+}) {
+  if (events.length === 0) {
+    return <p className="subtle m-0 text-sm">{emptyText}</p>;
+  }
+
+  const noun = kind === 'payment' ? 'payment' : 'rate change';
+  const update = (index: number, patch: Partial<ScenarioEvent>) =>
+    onChange(sortByDate(events.map((event, i) => (i === index ? { ...event, ...patch } : event))));
+
+  return (
+    <div className="event-list" style={EVENT_COLUMNS}>
+      <div className="event-row is-head" aria-hidden="true">
+        <span>Date</span>
+        <span>{kind === 'payment' ? 'Amount' : 'New rate'}</span>
+        <span />
+      </div>
+      {events.map((event, index) => (
+        <div className="event-row" key={`${event.date}-${index}`}>
+          <DraftDateInput
+            ariaLabel={`Date of scenario ${noun} ${index + 1}`}
+            min={minDate}
+            value={event.date}
+            onCommit={(date) => update(index, { date })}
+          />
+          <DraftNumberInput
+            ariaLabel={`${kind === 'payment' ? 'Amount' : 'Rate'} of scenario ${noun} ${index + 1}`}
+            grouped={kind === 'payment'}
+            invalidHint={kind === 'payment' ? AMOUNT_HINT : RATE_HINT}
+            max={kind === 'payment' ? undefined : RATE_LIMITS.max}
+            min={kind === 'payment' ? 1 : RATE_LIMITS.min}
+            prefix={kind === 'payment' ? '₹' : undefined}
+            suffix={kind === 'rate' ? '%' : undefined}
+            value={event.value}
+            onCommit={(value) => update(index, { value })}
+          />
+          <button
+            aria-label={`Remove scenario ${noun} ${index + 1}`}
+            className="icon-btn"
+            type="button"
+            onClick={() => onChange(events.filter((_, i) => i !== index))}
+          >
+            <Trash2 aria-hidden="true" size={15} />
+          </button>
+        </div>
+      ))}
+    </div>
   );
+}
+
+function ComparisonRow({
+  name,
+  schedule,
+  current,
+  color,
+  active = false,
+}: {
+  name: string;
+  schedule: LoanSchedule;
+  current: LoanSchedule;
+  color?: string;
+  active?: boolean;
+}) {
+  const isCurrent = schedule === current;
+  const monthsSaved = current.summary.totalMonths - schedule.summary.totalMonths;
+  const interestSaved = current.summary.totalInterest - schedule.summary.totalInterest;
+
+  return (
+    <tr
+      aria-current={active ? 'true' : undefined}
+      className={classNames(isCurrent && 'font-bold', active && 'is-active-row')}
+    >
+      <td className="cell-wrap plan-cell">
+        <span className="inline-flex items-center gap-2">
+          <span
+            className="swatch"
+            style={{ background: color ?? (isCurrent ? 'var(--primary)' : 'var(--c-baseline)') }}
+          />
+          {name}
+        </span>
+        <span className="only-narrow-block subtle text-xs font-semibold">
+          Payoff {formatMonthYear(schedule.summary.payoffDate)}
+        </span>
+      </td>
+      <td className="numeric col-optional">{formatMonthYear(schedule.summary.payoffDate)}</td>
+      <td className="numeric col-optional">{formatDuration(schedule.summary.totalMonths)}</td>
+      <td className="numeric col-optional">{formatInrShort(schedule.summary.totalInterest)}</td>
+      <td
+        className={classNames('cell-wrap', isCurrent ? 'subtle' : toneClass(toneOf(monthsSaved)))}
+      >
+        {isCurrent
+          ? 'Your plan today'
+          : `${timeShift(monthsSaved)}, ${interestShift(interestSaved)}`}
+      </td>
+    </tr>
+  );
+}
+
+function sortByDate<T extends { date: string }>(items: T[]): T[] {
+  return [...items].sort((left, right) => left.date.localeCompare(right.date));
 }

@@ -37,3 +37,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .private/
 *.plain.json
 *.vault.tmp
+
+# AI Artifacts
+.scratchpad/
+.claude/
+.codex/
+.grok/

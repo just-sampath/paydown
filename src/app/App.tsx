@@ -16,7 +16,6 @@ import { WhatIfPage } from '../pages/WhatIfPage';
 import { createIndexedDbKeyStore, type DeviceKeyStore } from './deviceKeyStore';
 import {
   clearLegacyData,
-  createEmptyScenario,
   loadAppearancePrefs,
   loadSampleEdits,
   resetStoredData,
@@ -160,7 +159,6 @@ export function App({
     }
 
     resetStoredData();
-    setPrefs(defaultPrefs);
     setSampleData(userDataFromProfile(sampleLoan));
   };
 
@@ -173,7 +171,7 @@ export function App({
     void restoreRememberedDataset(vaultSource, keyStore).then((profile) => {
       if (profile === undefined) {
         writeRememberedFlag(false);
-        setNotice('set a needs unlocking again.');
+        setNotice('set a is locked again. Unlock it in Settings to see it.');
         setDataset({ kind: 'sample' });
         return;
       }
@@ -199,15 +197,26 @@ export function App({
     return () => window.removeEventListener('hashchange', syncPageFromHash);
   }, []);
 
+  // A new page starts at the top, not at the previous page's scroll position.
+  const shownPage = useRef(page);
+  useEffect(() => {
+    if (shownPage.current !== page) {
+      shownPage.current = page;
+      window.scrollTo({ top: 0 });
+    }
+  }, [page]);
+
   const navigate = (nextPage: PageId): void => {
     setPage(nextPage);
     if (window.location.hash !== `#${nextPage}`) {
-      window.location.hash = nextPage;
+      window.location.assign(`#${nextPage}`);
     }
   };
 
-  const loanLabel = `${activeProfile.meta.name} · ${formatInrShort(activeProfile.loan.principal)}`;
-  const loanDetail = `Started ${formatMonthYear(activeProfile.loan.startDate)}`;
+  const loanLabel = activeProfile.meta.name;
+  const loanDetail = `${formatInrShort(activeProfile.loan.principal)} · First EMI ${formatMonthYear(
+    activeProfile.loan.startDate,
+  )}`;
 
   if (dataset.kind === 'restoring') {
     return (
@@ -223,6 +232,7 @@ export function App({
 
   const pageElement = getPageElement({
     page,
+    navigate,
     prefs,
     setPrefs,
     analysis,
@@ -234,13 +244,20 @@ export function App({
     setRateChanges: (rateChanges) => setUserData((data) => ({ ...data, rateChanges })),
     setPartPayments: (partPayments) => setUserData((data) => ({ ...data, partPayments })),
     setScenarios: (scenarios) => setUserData((data) => ({ ...data, scenarios })),
-    addScenario: () =>
-      setUserData((data) => ({
-        ...data,
-        scenarios: [...data.scenarios, createEmptyScenario(data.scenarios.length)],
-      })),
     resetData,
   });
+
+  const banners = (
+    <>
+      {notice !== null && <Banner onDismiss={() => setNotice(null)}>{notice}</Banner>}
+      {hasUnsavedUnlockedEdits && (
+        <Banner>
+          Edits to set a only last until you close this tab. To keep them, run{' '}
+          <code>bun run vault</code>.
+        </Banner>
+      )}
+    </>
+  );
 
   return (
     <AppLayout
@@ -248,13 +265,8 @@ export function App({
       onNavigate={navigate}
       loanLabel={loanLabel}
       loanDetail={loanDetail}
+      banner={banners}
     >
-      {notice !== null && <Banner onDismiss={() => setNotice(null)}>{notice}</Banner>}
-      {hasUnsavedUnlockedEdits && (
-        <Banner>
-          Changes to set a here are temporary. Save them with <code>bun run vault</code>.
-        </Banner>
-      )}
       <ErrorBoundary resetKeys={[page, userData]} onReset={resetData}>
         {pageElement}
       </ErrorBoundary>
@@ -264,13 +276,10 @@ export function App({
 
 function Banner({ children, onDismiss }: { children: ReactNode; onDismiss?: () => void }) {
   return (
-    <div
-      className="mx-6 mt-4 flex items-center justify-between gap-4 rounded-lg border border-[var(--hairline-strong)] bg-[var(--surface-2)] px-4 py-3 text-sm"
-      role="status"
-    >
+    <div className="banner" role="status">
       <span>{children}</span>
       {onDismiss && (
-        <button className="btn" onClick={onDismiss} type="button">
+        <button className="btn btn-sm" onClick={onDismiss} type="button">
           Dismiss
         </button>
       )}
@@ -328,6 +337,7 @@ function writeRememberedFlag(remembered: boolean): void {
 
 type PageFactoryInput = {
   page: PageId;
+  navigate: (page: PageId) => void;
   prefs: AppearancePrefs;
   setPrefs: (prefs: AppearancePrefs) => void;
   analysis: ReturnType<typeof buildLoanAnalysis>;
@@ -339,7 +349,6 @@ type PageFactoryInput = {
   setRateChanges: (rateChanges: RateChange[]) => void;
   setPartPayments: (partPayments: PartPayment[]) => void;
   setScenarios: (scenarios: WhatIfScenario[]) => void;
-  addScenario: () => void;
   resetData: () => void;
 };
 
@@ -374,7 +383,6 @@ function getPageElement(input: PageFactoryInput) {
         analysis={input.analysis}
         baseConfig={input.profile.loan}
         scenarios={input.profile.scenarios}
-        onAddScenario={input.addScenario}
         onChange={input.setScenarios}
       />
     );
@@ -396,5 +404,11 @@ function getPageElement(input: PageFactoryInput) {
     );
   }
 
-  return <DashboardPage analysis={input.analysis} isSample={input.datasetId === 'sample'} />;
+  return (
+    <DashboardPage
+      analysis={input.analysis}
+      isSample={input.datasetId === 'sample'}
+      onNavigate={input.navigate}
+    />
+  );
 }

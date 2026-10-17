@@ -22,7 +22,8 @@ const PREFS_STORAGE_KEY = 'paydown:prefs:v1';
 /** Pre-vault key that held real loan events in plaintext. Removed on every start. */
 export const LEGACY_DATA_STORAGE_KEY = 'paydown:data:v1';
 
-export const scenarioColors = ['#B8A3F0', '#E89568', '#FFE15A', '#B5C77A', '#4EA5FF'];
+/** Mid-tone scenario colours that stay visible on both light and dark surfaces. */
+export const scenarioColors = ['#8B6FE0', '#E07A45', '#2E9E8F', '#C99A00', '#3D8BE0'];
 
 /**
  * Reads the visitor's edits to the sample loan from localStorage.
@@ -74,32 +75,59 @@ export function saveAppearancePrefs(prefs: AppearancePrefs): void {
 }
 
 /**
- * Clears all persisted app data owned by this dashboard, including legacy keys.
+ * Clears the stored sample edits and legacy keys. Theme and palette are kept: restoring
+ * the data is about the loan, not about how the app looks.
  *
  * @returns Nothing.
  */
 export function resetStoredData(): void {
   window.localStorage.removeItem(SAMPLE_STORAGE_KEY);
-  window.localStorage.removeItem(PREFS_STORAGE_KEY);
   clearLegacyData();
 }
 
 /**
- * Creates a new empty what-if scenario.
+ * Creates a new empty what-if scenario with a name and colour no other scenario uses.
  *
- * @param index - Zero-based scenario index used for name and color selection.
- * @returns Scenario with no hypothetical events.
+ * @param existing - Scenarios that already exist.
+ * @param events - Optional starting events for the scenario.
+ * @returns Scenario ready to append to the list.
  */
-export function createEmptyScenario(index: number): WhatIfScenario {
-  const color = scenarioColors[index % scenarioColors.length] ?? '#B8A3F0';
+export function createEmptyScenario(
+  existing: WhatIfScenario[],
+  events: Pick<WhatIfScenario, 'rateChanges' | 'partPayments'> = {
+    rateChanges: [],
+    partPayments: [],
+  },
+): WhatIfScenario {
+  const usedNames = new Set(existing.map((scenario) => scenario.name));
+  const usedColors = new Set(existing.map((scenario) => scenario.color.toLowerCase()));
+  const color =
+    scenarioColors.find((item) => !usedColors.has(item.toLowerCase())) ??
+    scenarioColors[existing.length % scenarioColors.length] ??
+    '#B8A3F0';
 
   return {
     id: window.crypto.randomUUID(),
-    name: `Scenario ${String.fromCharCode(65 + index)}`,
+    name: nextScenarioName(usedNames),
     color,
-    rateChanges: [],
-    partPayments: [],
+    ...events,
   };
+}
+
+function nextScenarioName(usedNames: Set<string>): string {
+  for (let index = 0; ; index += 1) {
+    const letters = scenarioLetters(index);
+    const name = `Scenario ${letters}`;
+
+    if (!usedNames.has(name)) {
+      return name;
+    }
+  }
+}
+
+function scenarioLetters(index: number): string {
+  const letter = String.fromCharCode(65 + (index % 26));
+  return index < 26 ? letter : `${letter}${Math.floor(index / 26)}`;
 }
 
 function readJson<T>(key: string, fallback: T): T {
