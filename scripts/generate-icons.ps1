@@ -61,5 +61,10 @@ function New-Icon([int]$size, [string]$file, [double]$radiusRatio, [double]$font
 New-Icon 32 'favicon-32.png' 0.22 0.44 0.02
 # iOS home-screen icon: full-bleed square; iOS applies its own corner mask.
 New-Icon 180 'apple-touch-icon.png' 0.0 0.4 0.02
+# Installed-app icons from the web manifest, drawn as-is on desktops and app launchers.
+New-Icon 192 'icon-192.png' 0.22 0.4 0.02
+New-Icon 512 'icon-512.png' 0.22 0.4 0.02
+# Android masks this one to its own shape, so the text stays inside the central safe zone.
+New-Icon 512 'icon-maskable-512.png' 0.0 0.28 0.015
 
 Write-Output "Icons written to $outDir"

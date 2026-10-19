@@ -17,7 +17,7 @@ bun run check:private
 ```
 
 - `dev` serves on http://127.0.0.1:5173.
-- `build` type-checks the app, node and scripts projects, then runs `vite build`.
+- `build` type-checks the app, node, scripts and service worker projects, then runs `vite build`.
 - Run one test file with `bun run test tests/pages/WhatIfPage.test.tsx`.
 - Before you call a change done, run lint, test, build, format:check and check:private. CI runs all of them except format:check on every push to `main`.
 
@@ -38,6 +38,7 @@ src/components/charts/ Hand-drawn SVG charts and their helpers in chartUtils.ts
 src/features/loan/     EMI, schedule, event impacts and aggregates (all loan maths lives here)
 src/features/vault/    Profile validation and WebCrypto encryption, shared by browser, CLI and tests
 src/utils/             Formatting, rate limits, savings phrases, dates, CSV parsing
+src/pwa/               Service worker, its registration, and the build-time precache list
 src/data/quotes.csv    600 public-domain quotes for the dashboard, one shown per day
 src/styles/index.css   Theme tokens and all component CSS
 scripts/               Vault CLI, leak check, plaintext guard, icon generator
@@ -55,6 +56,8 @@ docs/                  calculations.md (maths and expected figures), vault.md (e
 Never write a real loan to storage in plain text. Anything that persists the visitor's own loan goes through `sealProfile` or `resealData`.
 
 Every quote in `src/data/quotes.csv` comes from a public-domain book on Project Gutenberg, with its author, topic, book title and Gutenberg link. Add only quotes you can source the same way; modern quote sites are copyrighted and forbid scraping. `DailyQuote` loads the file lazily and walks it with a fixed stride, so each day gets one quote and none repeats until all have shown.
+
+Paydown installs as an app. `public/manifest.webmanifest` names it and lists the icons, which `scripts/generate-icons.ps1` draws. `src/pwa/worker.ts` is the service worker: the `paydown-service-worker` plugin in `vite.config.ts` builds it to `dist/sw.js` and fills in the files to cache. It caches only the app's static files, never loan data, and leaves out the encrypted set a file until someone unlocks it. The worker has its own `tsconfig.sw.json` (WebWorker types) and must not import anything, so it builds to one classic script. It only registers in production builds, so check offline behaviour with `bun run build` and `bun run preview`.
 
 `recharts` is still listed in `package.json` and has a chunk rule in `vite.config.ts`, but nothing imports it. Draw new charts as SVG in `src/components/charts/`.
 

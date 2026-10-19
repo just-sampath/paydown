@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.scripts.json --noEmit",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.scripts.json --noEmit && tsc -p tsconfig.sw.json --noEmit",
     "build": "bun run typecheck && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run --config vite.config.ts",

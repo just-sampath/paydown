@@ -4,6 +4,7 @@ import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { DatasetId } from '../app/App';
 import type { AppearancePrefs } from '../app/storage';
 import { CreateLoanDialog } from '../components/CreateLoanDialog';
+import { InstallCard } from '../components/InstallCard';
 import { LoanTermsEditor } from '../components/LoanTermsEditor';
 import { ConfirmDialog, ModalOverlay, useModal } from '../components/Modal';
 import { Card } from '../components/Primitives';
@@ -156,6 +157,8 @@ export function SettingsPage(props: SettingsPageProps) {
       </Card>
 
       <DataCard {...props} />
+
+      <InstallCard />
     </div>
   );
 }
