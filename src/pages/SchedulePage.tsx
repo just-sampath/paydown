@@ -80,7 +80,7 @@ export function SchedulePage({ analysis }: SchedulePageProps) {
         <StatCard
           label="Total paid"
           value={formatInrShort(summary.totalOutflow)}
-          detail="Principal plus all interest, first EMI to last"
+          detail="Principal plus interest"
         />
       </div>
 
@@ -196,7 +196,7 @@ function MonthRow({ row, nextIndex }: { row: ScheduleRow; nextIndex: number | un
       <td>
         <span className="font-semibold">{formatMonthYear(row.date)}</span>
         <span className="subtle ml-2 text-xs">#{row.index}</span>
-        {state === 'next' && <span className="chip only-wide ml-2">Next</span>}
+        {state === 'next' && <span className="chip chip-next ml-2">Next</span>}
         {row.prepayment > 0 && (
           <span className="chip chip-prepay only-narrow ml-2">
             +{formatInrShort(row.prepayment)}
@@ -225,14 +225,22 @@ function MonthRow({ row, nextIndex }: { row: ScheduleRow; nextIndex: number | un
         <span className="only-narrow">{formatInrShort(row.closingBalance)}</span>
       </td>
       <td className="numeric col-optional">
-        {row.rateChanged ? (
-          <span className="chip chip-rate">{formatPercent(row.rate)}</span>
-        ) : (
-          <span className="subtle">{formatPercent(row.rate)}</span>
-        )}
+        <RateCell row={row} />
       </td>
     </tr>
   );
+}
+
+/**
+ * Shows the rate only where it is news: the first EMI and each month it changed. A column
+ * of the same rate month after month would hide the changes.
+ */
+function RateCell({ row }: { row: ScheduleRow }) {
+  if (row.rateChanged) {
+    return <span className="chip chip-rate">{formatPercent(row.rate)}</span>;
+  }
+
+  return row.index === 1 ? <span className="subtle">{formatPercent(row.rate)}</span> : null;
 }
 
 /**

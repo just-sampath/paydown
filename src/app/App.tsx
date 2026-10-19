@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { sampleLoan } from '../config/sampleLoan';
+import { SAMPLE_NOTE, sampleLoan } from '../config/sampleLoan';
 import { buildLoanAnalysis } from '../features/loan/loanEngine';
 import type { PartPayment, RateChange } from '../features/loan/loanEngine';
 import type { LoanProfile } from '../features/vault/loanProfile';
@@ -171,7 +171,7 @@ export function App({
     void restoreRememberedDataset(vaultSource, keyStore).then((profile) => {
       if (profile === undefined) {
         writeRememberedFlag(false);
-        setNotice('set a is locked again. Unlock it in Settings to see it.');
+        setNotice('Set a is locked again. Unlock it in Settings to see it.');
         setDataset({ kind: 'sample' });
         return;
       }
@@ -265,6 +265,8 @@ export function App({
       onNavigate={navigate}
       loanLabel={loanLabel}
       loanDetail={loanDetail}
+      // The dashboard hero already says it.
+      sampleNote={isUnlocked || page === 'dashboard' ? undefined : SAMPLE_NOTE}
       banner={banners}
     >
       <ErrorBoundary resetKeys={[page, userData]} onReset={resetData}>

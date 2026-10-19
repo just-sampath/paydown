@@ -47,3 +47,14 @@ export function rateConflict(
 
   return undefined;
 }
+
+/**
+ * A plausible new rate for an add form's example: a little under today's rate, so the
+ * example is never the rate already in effect.
+ *
+ * @param currentRate - Rate in effect now.
+ * @returns Rate with two decimals, such as `8.10`.
+ */
+export function exampleRate(currentRate: number): string {
+  return Math.max(RATE_LIMITS.min, currentRate - 0.25).toFixed(2);
+}

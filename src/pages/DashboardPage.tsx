@@ -1,20 +1,25 @@
 import { ArrowRight, CalendarRange, IndianRupee, Percent } from 'lucide-react';
+import { Fragment, lazy, Suspense, type ReactNode } from 'react';
 
 import { BalanceChart, ImpactBarChart } from '../components/Charts';
+import { SAMPLE_NOTE } from '../config/sampleLoan';
 import type { PageId } from '../components/Layout';
 import { PaidProgressPanel } from '../components/PaidProgress';
 import { Card, StatCard, toneOf } from '../components/Primitives';
 import type { LoanAnalysis } from '../features/loan/loanEngine';
 import {
+  durationWords,
   formatDate,
   formatDuration,
   formatInr,
   formatInrShort,
   formatMonthYear,
   formatPercent,
-  formatPoints,
   pluralize,
 } from '../utils/format';
+
+// The quote list is a separate chunk, so it never delays the first paint.
+const DailyQuote = lazy(() => import('../components/DailyQuote'));
 
 type DashboardPageProps = {
   analysis: LoanAnalysis;
@@ -59,7 +64,7 @@ export function DashboardPage({ analysis, isSample = false, onNavigate }: Dashbo
           icon={<Percent aria-hidden="true" size={14} />}
           label="Current rate"
           value={formatPercent(currentRate)}
-          detail={rateDetail(currentRate - startRate)}
+          detail={rateDetail(currentRate, startRate)}
           tone={toneOf(startRate - currentRate)}
         />
         <StatCard
@@ -110,7 +115,7 @@ export function DashboardPage({ analysis, isSample = false, onNavigate }: Dashbo
 
 function Hero({ analysis, isSample }: { analysis: LoanAnalysis; isSample: boolean }) {
   const months = analysis.monthsSaved;
-  const behind = months < 0;
+  const left = analysis.remainingPaymentCount;
   const original = analysis.original.summary;
   const actual = analysis.actual.summary;
   const eventCount = `${pluralize(analysis.rateImpacts.length, 'rate change')} and ${pluralize(
@@ -121,22 +126,32 @@ function Hero({ analysis, isSample }: { analysis: LoanAnalysis; isSample: boolea
   return (
     <section className="hero" aria-labelledby="hero-title">
       <div>
-        {isSample && <div className="label">Sample loan with made-up numbers</div>}
-        <h2 className={behind ? 'hero-title is-behind' : 'hero-title'} id="hero-title">
-          {months === 0 ? (
+        {isSample && <div className="label">{SAMPLE_NOTE}</div>}
+        <h2 className="hero-title" id="hero-title">
+          {left > 0 ? (
             <>
-              Debt-free in <em>{formatMonthYear(actual.payoffDate)}</em>
+              <em>
+                {/* Each number stays with its unit when the headline wraps on a phone, so the
+                    space between parts sits outside the no-wrap spans. */}
+                {durationWords(left).map((part, index) => (
+                  <Fragment key={part}>
+                    {index > 0 && ' '}
+                    <span>{part}</span>
+                  </Fragment>
+                ))}
+              </em>{' '}
+              left to pay
             </>
           ) : (
             <>
-              Debt-free <em>{formatDuration(Math.abs(months))}</em> {behind ? 'later' : 'sooner'}
+              Your loan is <em>paid off</em>
             </>
           )}
         </h2>
         <p className="hero-copy">{heroCopy(months, eventCount)}</p>
-        <div className={behind ? 'hero-status is-behind' : 'hero-status'}>
-          {statusLabel(months)}
-        </div>
+        <Suspense fallback={null}>
+          <DailyQuote date={analysis.asOfDate} />
+        </Suspense>
       </div>
       <div className="plan-compare">
         <div className="plan-compare-row">
@@ -161,32 +176,35 @@ function Hero({ analysis, isSample }: { analysis: LoanAnalysis; isSample: boolea
   );
 }
 
-function heroCopy(months: number, eventCount: string): string {
+function heroCopy(months: number, eventCount: string): ReactNode {
+  // Balanced wrapping can split "5 yr 2 mo" on a phone, so the duration stays on one line.
+  const duration = <span className="whitespace-nowrap">{formatDuration(Math.abs(months))}</span>;
+
   if (months > 0) {
-    return `Your ${eventCount} took that much off the original term.`;
+    return (
+      <>
+        Your {eventCount} took {duration} off the original term.
+      </>
+    );
   }
 
   if (months < 0) {
-    return `Your ${eventCount} together pushed the payoff past the original term.`;
+    return (
+      <>
+        Your {eventCount} added {duration} to the original term.
+      </>
+    );
   }
 
   return 'Your loan is still on its original term.';
 }
 
-function statusLabel(months: number): string {
-  if (months > 0) {
-    return 'Ahead of the original plan';
-  }
-
-  return months < 0 ? 'Behind the original plan' : 'On the original plan';
-}
-
-function rateDetail(change: number): string {
-  if (Math.abs(change) < 0.005) {
+function rateDetail(currentRate: number, startRate: number): string {
+  if (Math.abs(currentRate - startRate) < 0.005) {
     return 'Same as at the start';
   }
 
-  return `${formatPoints(change)} ${change < 0 ? 'lower' : 'higher'} than at the start`;
+  return `${currentRate < startRate ? 'Down' : 'Up'} from ${formatPercent(startRate)}`;
 }
 
 function RecentPayments({ analysis }: { analysis: LoanAnalysis }) {

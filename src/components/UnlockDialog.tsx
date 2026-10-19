@@ -59,6 +59,7 @@ export function UnlockDialog({ onUnlock, onClose }: UnlockDialogProps) {
   return (
     <ModalOverlay>
       <form
+        aria-describedby="unlock-description"
         aria-labelledby="unlock-title"
         aria-modal="true"
         className="modal"
@@ -68,8 +69,12 @@ export function UnlockDialog({ onUnlock, onClose }: UnlockDialogProps) {
         role="dialog"
       >
         <h2 className="modal-title" id="unlock-title">
-          unlock set a
+          Unlock set a
         </h2>
+        <p className="modal-body" id="unlock-description">
+          Set a is a private loan that comes encrypted with this site. Its passphrase opens it here.
+          Without the passphrase, you keep seeing the sample loan.
+        </p>
         <div className="field-row mt-4">
           <label className="label" htmlFor="unlock-passphrase">
             Passphrase

@@ -18,7 +18,10 @@ describe('rate changes page', () => {
     const text = container.textContent ?? '';
 
     expect(text).toContain('If the rate had never changed');
-    expect(text).toContain('1 yr 3 mo longer');
+    expect(text).toContain('1 yr 3 mo longer without the changes');
+    expect(text).toContain('Same since the first EMI');
+    expect(text).toContain('Your EMI stays the same and the number of EMIs changes instead.');
+    expect(container.querySelector('#new-rate-example')?.textContent).toBe('for example 8.10');
     expect(text).toContain('₹6.15L more interest, with the same part payments');
     expect(text).toContain('₹40,923');
     expect(text).toContain('All 3 changes');

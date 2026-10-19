@@ -138,15 +138,9 @@ function buildRateChart(analysis: LoanAnalysis, rateChanges: RateChange[], width
     xTicks: yearTicks(startDate, 1, endIndex, innerWidth / Math.max(endIndex - 1, 1)),
     todayX: analysis.todayIndex > 0 ? x(Math.min(analysis.todayIndex, endIndex)) : undefined,
     path: stepPath(stops, endIndex, x, y),
-    points: stops.map((stop, i) => {
-      const crowded = i > 0 && x(stop.index) - x(stops[i - 1]?.index ?? 1) < 52;
-      const below = crowded && i % 2 === 1;
-      return {
-        ...stop,
-        x: x(stop.index),
-        y: y(stop.rate),
-        labelY: y(stop.rate) + (below ? 17 : -9),
-      };
+    points: labelPositions(stops, x, y).map((labelY, i) => {
+      const stop = stops[i] ?? { index: 1, rate: startRate };
+      return { ...stop, x: x(stop.index), y: y(stop.rate), labelY };
     }),
     summary:
       changes.length === 0
@@ -155,6 +149,38 @@ function buildRateChart(analysis: LoanAnalysis, rateChanges: RateChange[], width
             rates.at(-1) ?? startRate,
           )} over ${pluralize(changes.length, 'change')}.`,
   };
+}
+
+const LABEL_WIDTH = 38;
+const LABEL_HEIGHT = 15;
+const ABOVE = -9;
+const BELOW = 17;
+
+/**
+ * Puts each rate label on the side its next step does not cross: above when the rate then
+ * falls, below when it rises. A label that would sit on an earlier one switches sides.
+ */
+function labelPositions(
+  stops: Array<{ index: number; rate: number }>,
+  x: (index: number) => number,
+  y: (rate: number) => number,
+): number[] {
+  const placed: Array<{ left: number; baseline: number }> = [];
+
+  return stops.map((stop, i) => {
+    const next = stops[i + 1];
+    const sides = next !== undefined && next.rate > stop.rate ? [BELOW, ABOVE] : [ABOVE, BELOW];
+    const left = x(stop.index) + 7;
+    const free = (offset: number) =>
+      placed.every(
+        (label) =>
+          Math.abs(label.left - left) >= LABEL_WIDTH ||
+          Math.abs(label.baseline - (y(stop.rate) + offset)) >= LABEL_HEIGHT,
+      );
+    const baseline = y(stop.rate) + (sides.find(free) ?? sides[0] ?? ABOVE);
+    placed.push({ left, baseline });
+    return baseline;
+  });
 }
 
 function stepPath(

@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react';
 import { DraftDateInput, DraftNumberInput } from '../components/DraftInputs';
 import {
   AddEventForm,
+  CounterfactualValue,
   EventStat,
   InterestEffect,
   LengthEffect,
@@ -13,7 +14,7 @@ import {
 import { Card, EmptyState, StatCard } from '../components/Primitives';
 import type { LoanAnalysis, PartPayment, PartPaymentImpact } from '../features/loan/loanEngine';
 import { formatDate, formatInr, formatInrShort, formatMonthYear, pluralize } from '../utils/format';
-import { interestShift, lengthShift, timeShift } from '../utils/savings';
+import { interestShift, timeShift } from '../utils/savings';
 
 type PartPaymentsPageProps = {
   analysis: LoanAnalysis;
@@ -63,7 +64,7 @@ export function PartPaymentsPage({ analysis, partPayments, onChange }: PartPayme
       <div className="kpi-grid is-three">
         <StatCard
           label="If you had made none"
-          value={category.monthsSaved === 0 ? 'Same length' : lengthShift(-category.monthsSaved)}
+          value={<CounterfactualValue months={category.monthsSaved} condition="without them" />}
           detail={`${interestShift(-category.interestSaved)}, with the same rate changes`}
         />
         <StatCard
@@ -73,10 +74,11 @@ export function PartPaymentsPage({ analysis, partPayments, onChange }: PartPayme
         />
         <StatCard
           label="Best value"
+          // Month and year fit a half-width tile on a 320px phone; the marked row has the day.
           value={best ? formatMonthYear(best.date) : 'None yet'}
           detail={
             best
-              ? 'This payment saved the most interest for each rupee paid'
+              ? 'It saved the most interest for each rupee. Its row is marked below.'
               : 'Add a part payment to see what it saves'
           }
         />
@@ -120,6 +122,7 @@ export function PartPaymentsPage({ analysis, partPayments, onChange }: PartPayme
               </div>
               {partPayments.map((payment, index) => (
                 <PaymentRow
+                  best={best !== undefined && best.index === index}
                   impact={analysis.partPaymentImpacts[index]}
                   index={index}
                   key={`${payment.date}-${index}`}
@@ -168,7 +171,7 @@ export function PartPaymentsPage({ analysis, partPayments, onChange }: PartPayme
             submitLabel="Add part payment"
             valueHint={AMOUNT_HINT}
             valueLabel="Amount"
-            valuePlaceholder="1,00,000"
+            valueExample="1,00,000"
             valuePrefix="₹"
             onAdd={(date, amount) => {
               undo.forget();
@@ -183,6 +186,8 @@ export function PartPaymentsPage({ analysis, partPayments, onChange }: PartPayme
 
 type PaymentRowProps = {
   payment: PartPayment;
+  /** Marks the payment that saved the most interest for each rupee. */
+  best: boolean;
   impact: PartPaymentImpact | undefined;
   index: number;
   minDate: string;
@@ -190,11 +195,19 @@ type PaymentRowProps = {
   onRemove: () => void;
 };
 
-function PaymentRow({ payment, impact, index, minDate, onUpdate, onRemove }: PaymentRowProps) {
+function PaymentRow({
+  payment,
+  best,
+  impact,
+  index,
+  minDate,
+  onUpdate,
+  onRemove,
+}: PaymentRowProps) {
   const interestSaved = impact?.interestSaved ?? 0;
 
   return (
-    <div className="event-row">
+    <div className={best ? 'event-row is-best' : 'event-row'}>
       <DraftDateInput
         ariaLabel={`Date of part payment ${index + 1}`}
         min={minDate}
@@ -219,6 +232,7 @@ function PaymentRow({ payment, impact, index, minDate, onUpdate, onRemove }: Pay
         </EventStat>
         <EventStat label="Saved per ₹1">
           {payment.amount > 0 ? `₹${(interestSaved / payment.amount).toFixed(2)}` : '₹0.00'}
+          {best && <span className="chip chip-best">Best value</span>}
         </EventStat>
         <EventStat label="Part-payment interest">
           {formatInr(impact?.simpleInterest ?? 0)}
@@ -237,10 +251,13 @@ function PaymentRow({ payment, impact, index, minDate, onUpdate, onRemove }: Pay
 }
 
 function bestPayment(payments: PartPayment[], impacts: PartPaymentImpact[]) {
-  return payments.reduce<{ date: string; ratio: number } | undefined>((best, payment, index) => {
-    const ratio = payment.amount > 0 ? (impacts[index]?.interestSaved ?? 0) / payment.amount : 0;
-    return best === undefined || ratio > best.ratio ? { date: payment.date, ratio } : best;
-  }, undefined);
+  return payments.reduce<{ date: string; index: number; ratio: number } | undefined>(
+    (best, payment, index) => {
+      const ratio = payment.amount > 0 ? (impacts[index]?.interestSaved ?? 0) / payment.amount : 0;
+      return best === undefined || ratio > best.ratio ? { date: payment.date, index, ratio } : best;
+    },
+    undefined,
+  );
 }
 
 function sumImpacts(impacts: Array<PartPaymentImpact | undefined>) {

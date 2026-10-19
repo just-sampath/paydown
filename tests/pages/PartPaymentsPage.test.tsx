@@ -25,9 +25,10 @@ describe('part payments page', () => {
 
     expect(text).toContain('Saved per ₹1');
     expect(text).toContain('₹3.88');
+    expect(text).toContain('3 yr longer without them');
     expect(text).toContain('Best value');
     expect(text).toContain('Feb 2024');
-    expect(text).toContain('This payment saved the most interest for each rupee paid');
+    expect(text).toContain('It saved the most interest for each rupee. Its row is marked below.');
     expect(text).toContain('Part-payment interest');
     expect(text).toContain('All 3 payments');
     expect(text).not.toContain('Effective ROI');
@@ -87,6 +88,31 @@ describe('part payments page', () => {
     blur(date);
     expect(onChange).not.toHaveBeenCalled();
     expect(date.value).toBe(payments[0]?.date);
+    cleanup();
+  });
+
+  test('marks the best-value payment in its own row', () => {
+    const { container, cleanup } = render(page(() => undefined));
+    const best = container.querySelectorAll('.event-row.is-best');
+
+    expect(best).toHaveLength(1);
+    expect((best[0]?.querySelector('input[type="date"]') as HTMLInputElement).value).toBe(
+      '2024-02-14',
+    );
+    expect(best[0]?.textContent).toContain('Best value');
+    cleanup();
+  });
+
+  test('shows an example amount beside the label, never inside the empty field', () => {
+    const { container, cleanup } = render(page(() => undefined));
+    const field = container.querySelector('#new-payment-value') as HTMLInputElement;
+
+    expect(field.value).toBe('');
+    expect(field.placeholder).toBe('');
+    expect(container.querySelector('#new-payment-example')?.textContent).toBe(
+      'for example 1,00,000',
+    );
+    expect(field.getAttribute('aria-describedby')).toBe('new-payment-example');
     cleanup();
   });
 

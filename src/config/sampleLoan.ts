@@ -1,5 +1,8 @@
 import type { LoanProfile } from '../features/vault/loanProfile';
 
+/** Says, wherever the sample loan is shown, that its figures are not real. */
+export const SAMPLE_NOTE = 'Sample loan with made-up numbers';
+
 /**
  * Fictional loan shown to every visitor. None of these figures belong to a real borrower.
  */

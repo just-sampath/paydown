@@ -33,6 +33,11 @@ describe('what-if page', () => {
     const { container, cleanup } = render(page(onChange, []));
 
     expect(container.textContent).toContain('No scenarios yet');
+    expect(container.textContent).not.toContain('Every plan side by side');
+    expect(buttonByText(container, 'Pay ₹1,00,000 extra next month')?.className).toContain(
+      'btn-primary',
+    );
+    expect(buttonByText(container, 'Empty scenario')?.className).not.toContain('btn-primary');
     click(buttonByText(container, 'Pay ₹1,00,000 extra next month'));
 
     const created = onChange.mock.calls[0]?.[0] as WhatIfScenario[];
@@ -42,17 +47,28 @@ describe('what-if page', () => {
     cleanup();
   });
 
-  test('compares a scenario with the current plan in words, once, on its own row', () => {
+  test('keeps the result next to the inputs and compares every plan below them', () => {
     const { container, cleanup } = render(page(() => undefined, [scenario]));
     const text = container.textContent ?? '';
     const row = container.querySelector('tr[aria-current="true"]');
+    const outcome = container.querySelector('.scenario-outcome');
+    const firstForm = container.querySelector('form');
+    const table = container.querySelector('table');
 
     expect(row?.textContent).toContain('Scenario A');
     expect(row?.textContent).toMatch(/sooner, ₹[\d.]+L less interest/);
     expect(row?.className).toContain('is-active-row');
+    expect(outcome?.getAttribute('role')).toBe('status');
+    expect(outcome?.textContent).toMatch(/sooner, ₹[\d.]+L less interest than your current plan/);
     expect(text).toContain('Your plan today');
     expect(text).toContain('Adds 1 part payment and 1 rate change to your real ones.');
-    expect(text).not.toContain('than your current plan');
+    // Result, then the inputs, then the full comparison.
+    expect(outcome?.compareDocumentPosition(firstForm as Node)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(firstForm?.compareDocumentPosition(table as Node)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     cleanup();
   });
 

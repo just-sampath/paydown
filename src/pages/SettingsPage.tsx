@@ -175,18 +175,18 @@ export function SettingsPage({
         )}
         <div className="settings-row is-action">
           <div>
-            <div className="font-bold">{unlocked ? 'set a · unlocked' : 'Sample loan'}</div>
+            <div className="font-bold">{unlocked ? 'Set a is unlocked' : 'Sample loan'}</div>
             <p className="subtle m-0 mt-1 text-sm">
               {unlocked
                 ? 'Edits here last until you close the tab. Locking goes back to the sample and forgets this device.'
-                : 'All figures shown are made up.'}
+                : 'All figures shown are made up. Set a is a private loan you can open with its passphrase.'}
             </p>
           </div>
           <div className="flex justify-end">
             {unlocked ? (
               <button className="btn" onClick={() => void onLock()} type="button">
                 <Lock aria-hidden="true" size={16} />
-                lock
+                Lock
               </button>
             ) : (
               <button
@@ -197,7 +197,7 @@ export function SettingsPage({
                 type="button"
               >
                 <Unlock aria-hidden="true" size={16} />
-                unlock set a
+                Unlock set a
               </button>
             )}
           </div>

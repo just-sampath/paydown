@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'vitest';
 
 import {
+  durationWords,
   formatDate,
   formatDuration,
   formatMonthYear,
-  formatPoints,
   pluralize,
 } from '../../src/utils/format';
 import { interestShift, lengthShift, timeShift } from '../../src/utils/savings';
@@ -16,13 +16,19 @@ describe('formatting', () => {
     expect(formatDuration(0)).toBe('0 mo');
   });
 
-  test('uses three-letter months, including September', () => {
-    expect(formatMonthYear('2026-09-01')).toBe('Sep 2026');
-    expect(formatDate('2026-09-07')).toBe('07 Sep 2026');
+  test('spells out a duration in parts that each keep their unit', () => {
+    expect(durationWords(135)).toEqual(['11 years', '3 months']);
+    expect(durationWords(12)).toEqual(['1 year']);
+    expect(durationWords(1)).toEqual(['1 month']);
+    expect(durationWords(0)).toEqual(['0 months']);
   });
 
-  test('labels rate gaps in points and counts in the right number', () => {
-    expect(formatPoints(-0.8)).toBe('0.80 pts');
+  test('uses three-letter months, including September', () => {
+    expect(formatMonthYear('2026-09-01')).toBe('Sep 2026');
+    expect(formatDate('2026-09-07')).toBe('7 Sep 2026');
+  });
+
+  test('counts in the right number', () => {
     expect(pluralize(1, 'rate')).toBe('1 rate');
     expect(pluralize(3, 'part payment')).toBe('3 part payments');
   });

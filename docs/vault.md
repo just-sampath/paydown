@@ -1,6 +1,6 @@
 # Private data set ("set a")
 
-The public site always opens on a fictional **sample loan**. A private loan can ship in the same build as an encrypted file, `src/vault/set-a.vault.json`. Only someone with its passphrase can unlock it, from **Settings → Data sets → unlock set a**.
+The public site always opens on a fictional **sample loan**. A private loan can ship in the same build as an encrypted file, `src/vault/set-a.vault.json`. Only someone with its passphrase can unlock it, from **Settings → Data on this device → Unlock set a**.
 
 ## Threat model
 
@@ -48,13 +48,13 @@ The same module, `src/features/vault/vaultCrypto.ts`, runs in the browser, in th
 
 ## Unlocking in the browser
 
-- **unlock set a** opens a passphrase prompt.
+- **Unlock set a** opens a passphrase prompt that says what set a is.
 - **A wrong passphrase** shows an error and changes nothing.
 - **On success**, the full loan replaces the sample: base terms, events and scenarios.
 - **Remember on this device** (optional) stores the unwrapped data key in IndexedDB as a **non-extractable** `CryptoKey`. Scripts can use it to decrypt but cannot read its bytes. No passphrase and no plaintext are ever written to the device.
   - Anyone who can use that browser profile can see the loan.
   - A non-extractable key is not protection against someone who has the device itself.
-- **lock** forgets the device key and returns to the sample.
+- **Lock** forgets the device key and returns to the sample.
 - **Edits made in the browser while unlocked are temporary.** Permanent changes go through the CLI.
 - **The encrypted file is a lazily loaded chunk**, so visitors who never unlock never download it.
 - **Old plaintext is deleted.** Older versions of the app kept loan events in `localStorage` under `paydown:data:v1`. The app deletes that key on startup.

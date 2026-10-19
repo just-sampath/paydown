@@ -45,7 +45,7 @@ describe('app data sets', () => {
     expect(window.localStorage.getItem(LEGACY_DATA_STORAGE_KEY)).toBeNull();
     expect(sidebar(container)).toContain('Sample loan');
     expect(pageText(container)).toContain('Sample Bank');
-    expect(buttonByText(container, 'unlock set a')).toBeTruthy();
+    expect(buttonByText(container, 'Unlock set a')).toBeTruthy();
   });
 
   test('a wrong passphrase shows an error and leaves the sample in place', async () => {
@@ -65,7 +65,7 @@ describe('app data sets', () => {
     const first = mount(keyStore);
 
     await submitPassphrase(first.container, PASSPHRASE, true);
-    await vi.waitFor(() => expect(first.container.textContent).toContain('set a · unlocked'), {
+    await vi.waitFor(() => expect(first.container.textContent).toContain('Set a is unlocked'), {
       timeout: 10_000,
     });
     expect(sidebar(first.container)).toContain('Test set');
@@ -74,12 +74,12 @@ describe('app data sets', () => {
 
     unmount();
     const second = mount(keyStore);
-    await vi.waitFor(() => expect(second.container.textContent).toContain('set a · unlocked'), {
+    await vi.waitFor(() => expect(second.container.textContent).toContain('Set a is unlocked'), {
       timeout: 10_000,
     });
 
     await act(async () => {
-      buttonByText(second.container, 'lock')?.click();
+      buttonByText(second.container, 'Lock')?.click();
     });
     await vi.waitFor(() => expect(sidebar(second.container)).toContain('Sample loan'));
     expect(await keyStore.get()).toBeUndefined();
@@ -101,7 +101,7 @@ describe('app data sets', () => {
 
   test('the unlock dialog keeps focus inside and closes on Escape from anywhere', () => {
     const { container } = mount(createMemoryKeyStore());
-    const opener = buttonByText(container, 'unlock set a') as HTMLButtonElement;
+    const opener = buttonByText(container, 'Unlock set a') as HTMLButtonElement;
 
     act(() => opener.focus());
     act(() => opener.click());
@@ -137,7 +137,7 @@ describe('app data sets', () => {
   test('keeps the sample when the build has no data set', () => {
     const { container } = mount(createMemoryKeyStore(), false);
 
-    expect((buttonByText(container, 'unlock set a') as HTMLButtonElement).disabled).toBe(true);
+    expect((buttonByText(container, 'Unlock set a') as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
@@ -171,7 +171,7 @@ function unmount() {
 
 async function submitPassphrase(container: HTMLElement, passphrase: string, remember: boolean) {
   act(() => {
-    buttonByText(container, 'unlock set a')?.click();
+    buttonByText(container, 'Unlock set a')?.click();
   });
 
   const input = container.querySelector('#unlock-passphrase') as HTMLInputElement;

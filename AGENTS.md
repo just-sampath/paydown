@@ -37,7 +37,8 @@ src/components/        Shared UI: Primitives, DraftInputs, EventEditing, Modal, 
 src/components/charts/ Hand-drawn SVG charts and their helpers in chartUtils.ts
 src/features/loan/     EMI, schedule, event impacts and aggregates (all loan maths lives here)
 src/features/vault/    Profile validation and WebCrypto encryption, shared by browser, CLI and tests
-src/utils/             Formatting, rate limits, savings phrases, dates
+src/utils/             Formatting, rate limits, savings phrases, dates, CSV parsing
+src/data/quotes.csv    600 public-domain quotes for the dashboard, one shown per day
 src/styles/index.css   Theme tokens and all component CSS
 scripts/               Vault CLI, leak check, plaintext guard, icon generator
 tests/                 Mirrors src/ and scripts/
@@ -45,6 +46,8 @@ docs/                  calculations.md (maths and expected figures), vault.md (e
 ```
 
 `App.tsx` owns all state and computes one `LoanAnalysis` with `buildLoanAnalysis(loan, today)`. Pages get the analysis, the event lists and an `onChange` callback. They keep no loan state of their own. Sample-loan edits persist in `localStorage` under `paydown:sample:v2`, and theme prefs under `paydown:prefs:v1`. Edits made while the private set is unlocked stay in memory only.
+
+Every quote in `src/data/quotes.csv` comes from a public-domain book on Project Gutenberg, with its author, topic, book title and Gutenberg link. Add only quotes you can source the same way; modern quote sites are copyrighted and forbid scraping. `DailyQuote` loads the file lazily and walks it with a fixed stride, so each day gets one quote and none repeats until all have shown.
 
 `recharts` is still listed in `package.json` and has a chunk rule in `vite.config.ts`, but nothing imports it. Draw new charts as SVG in `src/components/charts/`.
 
@@ -60,7 +63,7 @@ docs/                  calculations.md (maths and expected figures), vault.md (e
 
 - Reuse the existing building blocks:
   - `DraftDateInput` and `DraftNumberInput` for editable values. They keep typed text local and commit only valid values, so a list doesn't re-sort under the cursor. Pass `min`, `max` and `invalidHint` to show why a value is refused.
-  - `AddEventForm` for adding an event. Its `check` prop refuses duplicates.
+  - `AddEventForm` for adding an event. Its `check` prop refuses duplicates, and `valueExample` shows a sample value beside the label. Don't put a value-like placeholder inside an empty field.
   - `useUndoable` and `UndoNotice` for deletes. Delete at once and offer Undo instead of asking first.
   - `ConfirmDialog` and `useModal` for dialogs. They move focus in, trap Tab, close on Escape and return focus to the opener. Never use `window.confirm`, `alert` or `prompt`.
 - Rates must be from 1% to 30% (`RATE_LIMITS` in `src/utils/rates.ts`). Use `rateConflict` to refuse a second change on the same date or a change to the rate already in effect.
@@ -75,10 +78,11 @@ docs/                  calculations.md (maths and expected figures), vault.md (e
 Every visible string follows the same plain style:
 
 - Use plain words and short sentences.
-- Say "part payment" on screen, not "prepayment" (the code uses both).
+- Say "part payment" on screen, not "prepayment" or "prepay" (the code uses both). The phone tab is "Parts".
 - Don't use em or en dashes. Use a comma, colon, period or parentheses instead.
 - Use straight quotes and apostrophes.
-- Use sentence case for titles, labels and buttons. The lowercase "unlock set a" and "lock" labels are deliberate.
+- Write dates as "14 Feb 2024" or "Feb 2024". Only the native date field shows numbers like 14-02-2024.
+- Use sentence case for titles, labels and buttons. "Set a" is the private loan's name, so it stays lowercase after the first word: "Unlock set a".
 
 ## Tests
 

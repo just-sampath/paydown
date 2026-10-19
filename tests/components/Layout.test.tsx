@@ -18,7 +18,8 @@ describe('application layout', () => {
 
     expect(markup).toContain('aria-label="Dashboard"');
     expect(markup).toContain('aria-label="Part payments"');
-    expect(markup).toContain('>Prepay<');
+    expect(markup).toContain('>Parts<');
+    expect(markup).not.toContain('Prepay');
     expect(markup).toContain('aria-current="page"');
     expect(markup.match(/<h1/g)).toHaveLength(1);
     expect(markup).toContain('<h1>What-if</h1>');

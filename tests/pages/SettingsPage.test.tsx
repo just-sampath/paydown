@@ -69,7 +69,8 @@ describe('settings', () => {
     expect(text).toContain('20 yr (240 EMIs)');
     expect(text).toContain('The 1st of each month');
     expect(container.querySelectorAll('input')).toHaveLength(0);
-    expect(buttonByText(container, 'unlock set a')).toBeTruthy();
+    expect(buttonByText(container, 'Unlock set a')).toBeTruthy();
+    expect(text).toContain('Set a is a private loan you can open with its passphrase.');
     cleanup();
   });
 

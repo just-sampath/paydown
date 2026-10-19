@@ -14,7 +14,8 @@ type AddEventFormProps = {
   valueLabel: string;
   valuePrefix?: string;
   valueSuffix?: string;
-  valuePlaceholder: string;
+  /** A sample value shown next to the label, outside the field, so it never looks typed in. */
+  valueExample: string;
   /** Smallest value that can be added. */
   minValue: number;
   /** Largest value that can be added. */
@@ -40,7 +41,7 @@ export function AddEventForm({
   valueLabel,
   valuePrefix,
   valueSuffix,
-  valuePlaceholder,
+  valueExample,
   minValue,
   maxValue,
   valueHint,
@@ -54,6 +55,7 @@ export function AddEventForm({
   const problem = formProblem({ date, minDate, value, parsed, valueHint, check });
   const ready = problem === undefined && parsed !== undefined;
   const hintId = `${idPrefix}-hint`;
+  const exampleId = `${idPrefix}-example`;
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -79,17 +81,21 @@ export function AddEventForm({
         />
       </label>
       <label className="add-form-field" htmlFor={`${idPrefix}-value`}>
-        <span className="field-label">{valueLabel}</span>
+        <span className="field-label">
+          {valueLabel}{' '}
+          <span className="field-example" id={exampleId}>
+            for example {valueExample}
+          </span>
+        </span>
         <span className="field-adorned">
           {valuePrefix && <span className="field-affix">{valuePrefix}</span>}
           <input
-            aria-describedby={problem ? hintId : undefined}
+            aria-describedby={problem ? `${exampleId} ${hintId}` : exampleId}
             aria-invalid={value !== '' && parsed === undefined}
             autoComplete="off"
             className="input numeric"
             id={`${idPrefix}-value`}
             inputMode="decimal"
-            placeholder={valuePlaceholder}
             type="text"
             value={value}
             onChange={(event) => setValue(event.target.value)}
@@ -141,6 +147,27 @@ type UndoNoticeProps = {
   onUndo: () => void;
   onDismiss: () => void;
 };
+
+/**
+ * Value for a "what if this had not happened" stat card. The condition sits right next to
+ * the figure so it can't be read as what actually happened.
+ *
+ * @param props - Value props.
+ * @param props.months - Months the events saved; negative means they added months.
+ * @param props.condition - Short phrase naming what is taken away, such as "without them".
+ * @returns Stat value.
+ */
+export function CounterfactualValue({ months, condition }: { months: number; condition: string }) {
+  if (months === 0) {
+    return <>Same length</>;
+  }
+
+  return (
+    <>
+      {lengthShift(-months)} <span className="kpi-value-note">{condition}</span>
+    </>
+  );
+}
 
 /**
  * Small notice shown after a delete so the user can put the item back.

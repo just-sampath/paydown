@@ -5,6 +5,7 @@ import { RateHistoryChart } from '../components/Charts';
 import { DraftDateInput, DraftNumberInput } from '../components/DraftInputs';
 import {
   AddEventForm,
+  CounterfactualValue,
   EventStat,
   InterestEffect,
   LengthEffect,
@@ -14,8 +15,8 @@ import {
 import { Card, EmptyState, StatCard } from '../components/Primitives';
 import type { LoanAnalysis, RateChange } from '../features/loan/loanEngine';
 import { formatDate, formatInr, formatPercent, pluralize } from '../utils/format';
-import { RATE_HINT, RATE_LIMITS, rateConflict } from '../utils/rates';
-import { interestShift, lengthShift, timeShift } from '../utils/savings';
+import { RATE_HINT, RATE_LIMITS, exampleRate, rateConflict } from '../utils/rates';
+import { interestShift, timeShift } from '../utils/savings';
 
 type RateChangesPageProps = {
   analysis: LoanAnalysis;
@@ -63,7 +64,7 @@ export function RateChangesPage({ analysis, rateChanges, onChange }: RateChanges
         <StatCard
           label="If the rate had never changed"
           value={
-            category.monthsSaved === 0 ? 'Same length' : `${lengthShift(-category.monthsSaved)}`
+            <CounterfactualValue months={category.monthsSaved} condition="without the changes" />
           }
           detail={`${interestShift(-category.interestSaved)}, with the same part payments`}
         />
@@ -75,7 +76,7 @@ export function RateChangesPage({ analysis, rateChanges, onChange }: RateChanges
         <StatCard
           label="EMI"
           value={formatInr(analysis.actual.summary.baseEmi)}
-          detail="Stays the same when the rate moves. The number of EMIs changes instead."
+          detail="Same since the first EMI"
         />
       </div>
 
@@ -86,7 +87,7 @@ export function RateChangesPage({ analysis, rateChanges, onChange }: RateChanges
       <Card
         eyebrow="Your rate changes"
         title="What each change did"
-        subtitle="Enter the date your bank's new rate took effect. Changes save as you type."
+        subtitle="Enter the date your bank's new rate took effect. Your EMI stays the same and the number of EMIs changes instead. Changes save as you type."
       >
         <div className="stack gap-4">
           {removed && (
@@ -190,7 +191,7 @@ export function RateChangesPage({ analysis, rateChanges, onChange }: RateChanges
             minValue={RATE_LIMITS.min}
             submitLabel="Add rate change"
             valueLabel="New rate"
-            valuePlaceholder={currentRate.toFixed(2)}
+            valueExample={exampleRate(currentRate)}
             valueHint={RATE_HINT}
             valueSuffix="%"
             onAdd={(date, rate) => {

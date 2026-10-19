@@ -86,14 +86,33 @@ export function formatDuration(months: number): string {
 }
 
 /**
+ * Spells out a whole-month duration for a headline, one part per unit so the caller can
+ * keep each number with its unit when the line wraps.
+ *
+ * @param months - Duration in whole months, zero or more.
+ * @returns Parts such as `['11 years', '3 months']`, `['1 year']` or `['5 months']`.
+ */
+export function durationWords(months: number): string[] {
+  const whole = Math.max(0, Math.round(months));
+  const years = Math.floor(whole / 12);
+  const remainingMonths = whole % 12;
+  const parts = [
+    years > 0 && pluralize(years, 'year'),
+    (remainingMonths > 0 || years === 0) && pluralize(remainingMonths, 'month'),
+  ];
+
+  return parts.filter((part): part is string => typeof part === 'string');
+}
+
+/**
  * Formats an ISO date as an Indian date label.
  *
  * @param isoDate - ISO date string in `YYYY-MM-DD` format.
- * @returns Date label such as `01 Apr 2023`.
+ * @returns Date label such as `1 Apr 2023`.
  */
 export function formatDate(isoDate: string): string {
   const [year = '0', month = '1', day = '1'] = isoDate.split('-');
-  return `${day.padStart(2, '0')} ${monthName(Number(month))} ${year}`;
+  return `${Number(day)} ${monthName(Number(month))} ${year}`;
 }
 
 /**
@@ -116,16 +135,6 @@ export function formatMonthYear(isoDate: string): string {
  */
 export function formatPercent(value: number, digits = 2): string {
   return `${value.toFixed(digits)}%`;
-}
-
-/**
- * Formats a gap between two rates in percentage points, without a sign.
- *
- * @param value - Difference between two annual rates.
- * @returns Label such as `0.80 pts`.
- */
-export function formatPoints(value: number): string {
-  return `${Math.abs(value).toFixed(2)} pts`;
 }
 
 /**

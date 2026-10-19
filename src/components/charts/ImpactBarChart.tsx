@@ -1,6 +1,6 @@
 import type { EventImpact } from '../../features/loan/loanEngine';
-import { formatInrShort, formatPercent, pluralize } from '../../utils/format';
-import { clamp, niceTicks, shortMonthYear, useChartWidth } from './chartUtils';
+import { formatInrShort, formatMonthYear, formatPercent, pluralize } from '../../utils/format';
+import { clamp, niceTicks, useChartWidth } from './chartUtils';
 
 type ImpactBarChartProps = {
   events: EventImpact[];
@@ -73,7 +73,7 @@ export function ImpactBarChart({ events }: ImpactBarChartProps) {
           ))}
           {chart.bars.map((bar) => (
             <g data-impact-kind={bar.kind} key={`${bar.kind}-${bar.date}-${bar.x}`}>
-              <title>{`${bar.kind === 'rate' ? 'Rate change to' : 'Part payment of'} ${bar.label}, ${shortMonthYear(
+              <title>{`${bar.kind === 'rate' ? 'Rate change to' : 'Part payment of'} ${bar.label}, ${formatMonthYear(
                 bar.date,
               )}: ${pluralize(bar.months, 'month')}`}</title>
               <rect
@@ -96,7 +96,7 @@ export function ImpactBarChart({ events }: ImpactBarChartProps) {
                 {bar.label}
               </text>
               <text className="svg-axis" textAnchor="middle" x={bar.center} y={chart.height - 8}>
-                {shortMonthYear(bar.date)}
+                {formatMonthYear(bar.date)}
               </text>
             </g>
           ))}
@@ -147,7 +147,7 @@ function ImpactList({ events }: ImpactBarChartProps) {
               <span className="swatch" style={{ background: color }} />
               <span>
                 {eventLabel(event)}
-                <span className="subtle"> {shortMonthYear(event.date)}</span>
+                <span className="subtle"> {formatMonthYear(event.date)}</span>
               </span>
             </span>
             <span aria-hidden="true" className="impact-track">

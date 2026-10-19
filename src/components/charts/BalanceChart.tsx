@@ -6,7 +6,7 @@ import {
   type ScheduleRow,
 } from '../../features/loan/loanEngine';
 import { formatInrShort, formatMonthYear, formatPercent } from '../../utils/format';
-import { clamp, useChartWidth, yearTicks } from './chartUtils';
+import { clamp, niceTicks, useChartWidth, yearTicks } from './chartUtils';
 
 type BalanceChartProps = {
   analysis: LoanAnalysis;
@@ -28,8 +28,8 @@ const PAD = { left: 58, right: 20, top: 30, bottom: 58 };
  * Outstanding balance on the current plan against the original plan, with today's
  * position, every rate change and part payment, and both payoff dates.
  *
- * Hover, drag, or use the arrow keys to read any month. At rest the readout only says how
- * far today's balance is from the original plan, so it never repeats the balance the
+ * Hover, tap, drag, or use the arrow keys to read any month. At rest the readout only says
+ * how far today's balance is from the original plan, so it never repeats the balance the
  * progress card already shows.
  *
  * @param props - Chart props.
@@ -64,8 +64,14 @@ export function BalanceChart({ analysis }: BalanceChartProps) {
       <div className="chart-readout" aria-live="polite">
         {focusIndex === null ? (
           <p className="chart-readout-note">
-            {analysis.todayIndex > 0 && <>{restingSummary(today.original - today.actual)} </>}
-            Point at the chart or use the arrow keys to read any month.
+            {/* One text run, so the note wraps as a sentence inside its flex box. */}
+            <span>
+              {analysis.todayIndex > 0 && <>{restingSummary(today.original - today.actual)} </>}
+              <span className="hint-fine">
+                Point at the chart or use the arrow keys to read any month.
+              </span>
+              <span className="hint-touch">Tap the chart to read any month.</span>
+            </span>
           </p>
         ) : (
           <>
@@ -153,7 +159,12 @@ export function BalanceChart({ analysis }: BalanceChartProps) {
             x={PAD.left}
             y={PAD.top}
             onPointerDown={moveTo}
-            onPointerLeave={() => setFocusIndex(null)}
+            onPointerLeave={(event) => {
+              // A lifted finger also "leaves", which would hide the month just tapped.
+              if (event.pointerType === 'mouse') {
+                setFocusIndex(null);
+              }
+            }}
             onPointerMove={moveTo}
           />
         </svg>
@@ -245,54 +256,77 @@ function TodayMarker({ chart, index }: { chart: BalanceChartLayout; index: numbe
 const ACTUAL_TAG_WIDTH = 70;
 const ORIGINAL_TAG_WIDTH = 92;
 const TAG_HEIGHT = 20;
+const TAG_GAP = 6;
+/** Extra room under the axis when the two payoff tags need a row each. */
+const STACKED_TAG_ROOM = TAG_HEIGHT + TAG_GAP;
+
+/** Where both payoff tags go: side by side in one row, or a row each when they would touch. */
+function payoffTagLayout(analysis: LoanAnalysis, width: number, maxIndex: number) {
+  const innerWidth = width - PAD.left - PAD.right;
+  const x = (index: number) => PAD.left + (index / maxIndex) * innerWidth;
+  const right = width - PAD.right;
+  const debtTagX = clamp(
+    x(analysis.actual.summary.totalMonths) - ACTUAL_TAG_WIDTH / 2,
+    PAD.left,
+    right - ACTUAL_TAG_WIDTH,
+  );
+  const originalTagX = clamp(
+    x(analysis.original.summary.totalMonths) - ORIGINAL_TAG_WIDTH / 2,
+    PAD.left,
+    right - ORIGINAL_TAG_WIDTH,
+  );
+  const stacked =
+    originalTagX < debtTagX + ACTUAL_TAG_WIDTH + TAG_GAP &&
+    debtTagX < originalTagX + ORIGINAL_TAG_WIDTH + TAG_GAP;
+
+  return { debtTagX, originalTagX, stacked };
+}
 
 /**
- * Tags both payoff points in their own row just under the axis, where no line can reach
- * them. The tags name the plan rather than repeat the dates the hero already shows; the
- * dates are in each tag's tooltip.
+ * Tags both payoff points just under the axis, where no line can reach them. When the
+ * tags would touch, the original end moves to a second row instead of being dropped. The
+ * tags name the plan rather than repeat the dates the hero already shows; the dates are in
+ * each tag's tooltip.
  */
 function PayoffMarkers({ analysis, chart }: { analysis: LoanAnalysis; chart: BalanceChartLayout }) {
   const actualX = chart.x(analysis.actual.summary.totalMonths);
   const originalX = chart.x(analysis.original.summary.totalMonths);
   const baseline = chart.y(0);
   const tagY = baseline + 7;
-  const right = chart.width - PAD.right;
-  const debtTagX = clamp(actualX - ACTUAL_TAG_WIDTH / 2, PAD.left, right - ACTUAL_TAG_WIDTH);
-  const originalTagX = clamp(
-    originalX - ORIGINAL_TAG_WIDTH / 2,
-    PAD.left,
-    right - ORIGINAL_TAG_WIDTH,
-  );
-  const showOriginalTag =
-    originalTagX >= debtTagX + ACTUAL_TAG_WIDTH + 6 ||
-    debtTagX >= originalTagX + ORIGINAL_TAG_WIDTH + 6;
+  const { debtTagX, originalTagX, stacked } = chart.tags;
+  const originalTagY = stacked ? tagY + STACKED_TAG_ROOM : tagY;
 
   return (
     <g>
       <g>
         <title>{`Original plan ends ${formatMonthYear(analysis.original.summary.payoffDate)}`}</title>
         <circle cx={originalX} cy={baseline} fill="var(--c-baseline)" r="4" />
-        {showOriginalTag && (
-          <>
-            <rect
-              fill="var(--surface)"
-              height={TAG_HEIGHT}
-              rx="4"
-              stroke="var(--c-baseline)"
-              width={ORIGINAL_TAG_WIDTH}
-              x={originalTagX}
-              y={tagY}
-            />
-            <text
-              className="svg-axis"
-              textAnchor="middle"
-              x={originalTagX + ORIGINAL_TAG_WIDTH / 2}
-              y={tagY + 14}
-            >
-              Original end
-            </text>
-          </>
+        {stacked && (
+          <line
+            stroke="var(--c-baseline)"
+            x1={originalX}
+            x2={originalX}
+            y1={baseline + 4}
+            y2={originalTagY}
+          />
         )}
+        <rect
+          fill="var(--surface)"
+          height={TAG_HEIGHT}
+          rx="4"
+          stroke="var(--c-baseline)"
+          width={ORIGINAL_TAG_WIDTH}
+          x={originalTagX}
+          y={originalTagY}
+        />
+        <text
+          className="svg-axis"
+          textAnchor="middle"
+          x={originalTagX + ORIGINAL_TAG_WIDTH / 2}
+          y={originalTagY + 14}
+        >
+          Original end
+        </text>
       </g>
       <g>
         <title>{`Debt-free ${formatMonthYear(analysis.actual.summary.payoffDate)}`}</title>
@@ -360,16 +394,21 @@ function ActiveMarker({
 }
 
 function buildBalanceChart(analysis: LoanAnalysis, width: number) {
-  // The extra 24px holds the payoff tags under the axis.
-  const height = Math.round(clamp(width * 0.46, 240, 340)) + 24;
-  const innerWidth = width - PAD.left - PAD.right;
-  const innerHeight = height - PAD.top - PAD.bottom;
   const maxIndex = Math.max(
     analysis.original.summary.totalMonths,
     analysis.actual.summary.totalMonths,
     1,
   );
-  const maxBalance = Math.max(analysis.original.rows[0]?.openingBalance ?? 1, 1);
+  const tags = payoffTagLayout(analysis, width, maxIndex);
+  const tagRoom = tags.stacked ? STACKED_TAG_ROOM : 0;
+  // The extra 24px holds the payoff tags under the axis, and a second row when they stack.
+  const height = Math.round(clamp(width * 0.46, 240, 340)) + 24 + tagRoom;
+  const innerWidth = width - PAD.left - PAD.right;
+  const innerHeight = height - PAD.top - PAD.bottom - tagRoom;
+  const startBalance = Math.max(analysis.original.rows[0]?.openingBalance ?? 1, 1);
+  // Round steps such as ₹10L read better than quarters of the loan such as ₹11.25L.
+  const tickValues = niceTicks(0, startBalance, 5);
+  const maxBalance = tickValues.at(-1) ?? startBalance;
   const x = (index: number) => PAD.left + (index / maxIndex) * innerWidth;
   const y = (value: number) => PAD.top + innerHeight - (value / maxBalance) * innerHeight;
   const actual = balancePoints(analysis.actual.rows, maxIndex);
@@ -392,11 +431,12 @@ function buildBalanceChart(analysis: LoanAnalysis, width: number) {
     actualPath: toPath(trimAtPayoff(actual)),
     originalPath: toPath(trimAtPayoff(original)),
     gapPath: `${toPath([...original, ...[...actual].reverse()])} Z`,
+    tags,
     markers: buildMarkers(analysis, startDate, x, y),
     xTicks: yearTicks(startDate, 1, maxIndex, innerWidth / maxIndex),
-    yTicks: [0, 0.25, 0.5, 0.75, 1].map((ratio) => ({
-      value: maxBalance * ratio,
-      label: ratio === 0 ? '₹0' : formatInrShort(maxBalance * ratio),
+    yTicks: tickValues.map((value) => ({
+      value,
+      label: value === 0 ? '₹0' : formatInrShort(value),
     })),
   };
 }

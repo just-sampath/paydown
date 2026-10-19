@@ -19,7 +19,7 @@ import {
   formatPercent,
   pluralize,
 } from '../utils/format';
-import { RATE_HINT, RATE_LIMITS, rateConflict } from '../utils/rates';
+import { RATE_HINT, RATE_LIMITS, exampleRate, rateConflict } from '../utils/rates';
 import { interestShift, timeShift } from '../utils/savings';
 
 type WhatIfPageProps = {
@@ -112,7 +112,7 @@ export function WhatIfPage({ analysis, baseConfig, scenarios, onChange }: WhatIf
           >
             <div className="preset-list">
               <button
-                className="btn"
+                className="btn btn-primary"
                 type="button"
                 onClick={() =>
                   addScenario(
@@ -124,7 +124,7 @@ export function WhatIfPage({ analysis, baseConfig, scenarios, onChange }: WhatIf
                 Pay ₹1,00,000 extra next month
               </button>
               <PresetRateCut analysis={analysis} nextDate={nextDate} onAdd={addScenario} />
-              <button className="btn btn-primary" type="button" onClick={() => addScenario()}>
+              <button className="btn" type="button" onClick={() => addScenario()}>
                 <Plus aria-hidden="true" size={16} />
                 Empty scenario
               </button>
@@ -154,66 +154,69 @@ export function WhatIfPage({ analysis, baseConfig, scenarios, onChange }: WhatIf
           </div>
 
           <ScenarioHeader
+            current={analysis.actual}
             scenario={activeScenario}
+            schedule={results.get(activeScenario.id)}
             onDelete={() => removeScenario(activeScenario)}
             onRename={(name) => patchScenario(scenarios, activeScenario, { name }, onChange)}
+          />
+
+          <ScenarioEvents
+            baseConfig={baseConfig}
+            currentRate={analysis.nextRow?.rate ?? analysis.actual.rows.at(-1)?.rate ?? 0}
+            nextDate={nextDate}
+            scenario={activeScenario}
+            onPatch={(patch) => patchScenario(scenarios, activeScenario, patch, onChange)}
           />
         </>
       )}
 
-      <Card
-        eyebrow="Comparison"
-        title="Every plan side by side"
-        subtitle="The original plan has no rate changes or part payments. Your current plan has the real ones. Each scenario adds its own on top."
-      >
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Plan</th>
-                <th className="numeric col-optional">Payoff</th>
-                <th className="numeric col-optional">Length</th>
-                <th className="numeric col-optional">Interest</th>
-                <th className="cell-wrap">Against your current plan</th>
-              </tr>
-            </thead>
-            <tbody>
-              <ComparisonRow
-                current={analysis.actual}
-                name="Original plan"
-                schedule={analysis.original}
-              />
-              <ComparisonRow
-                current={analysis.actual}
-                name="Current plan"
-                schedule={analysis.actual}
-              />
-              {scenarios.map((scenario) => {
-                const schedule = results.get(scenario.id);
-                return schedule ? (
-                  <ComparisonRow
-                    active={scenario.id === activeScenario?.id}
-                    color={scenario.color}
-                    current={analysis.actual}
-                    key={scenario.id}
-                    name={scenario.name || 'Untitled'}
-                    schedule={schedule}
-                  />
-                ) : null;
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
+      {/* With no scenario the table would only repeat the dashboard, so it waits for one. */}
       {activeScenario && (
-        <ScenarioEvents
-          baseConfig={baseConfig}
-          currentRate={analysis.nextRow?.rate ?? analysis.actual.rows.at(-1)?.rate ?? 0}
-          nextDate={nextDate}
-          scenario={activeScenario}
-          onPatch={(patch) => patchScenario(scenarios, activeScenario, patch, onChange)}
-        />
+        <Card
+          eyebrow="Comparison"
+          title="Every plan side by side"
+          subtitle="The original plan has no rate changes or part payments. Your current plan has the real ones. Each scenario adds its own on top."
+        >
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Plan</th>
+                  <th className="numeric col-optional">Payoff</th>
+                  <th className="numeric col-optional">Length</th>
+                  <th className="numeric col-optional">Interest</th>
+                  <th className="cell-wrap">Against your current plan</th>
+                </tr>
+              </thead>
+              <tbody>
+                <ComparisonRow
+                  current={analysis.actual}
+                  name="Original plan"
+                  schedule={analysis.original}
+                />
+                <ComparisonRow
+                  current={analysis.actual}
+                  name="Current plan"
+                  schedule={analysis.actual}
+                />
+                {scenarios.map((scenario) => {
+                  const schedule = results.get(scenario.id);
+                  return schedule ? (
+                    <ComparisonRow
+                      active={scenario.id === activeScenario?.id}
+                      color={scenario.color}
+                      current={analysis.actual}
+                      key={scenario.id}
+                      name={scenario.name || 'Untitled'}
+                      schedule={schedule}
+                    />
+                  ) : null;
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   );
@@ -242,7 +245,7 @@ function PresetRateCut({
 
   return (
     <button
-      className="btn"
+      className="btn btn-primary"
       type="button"
       onClick={() =>
         onAdd(
@@ -258,11 +261,14 @@ function PresetRateCut({
 
 type ScenarioHeaderProps = {
   scenario: WhatIfScenario;
+  /** The scenario's schedule, so its result stays next to the inputs while they change. */
+  schedule: LoanSchedule | undefined;
+  current: LoanSchedule;
   onRename: (name: string) => void;
   onDelete: () => void;
 };
 
-function ScenarioHeader({ scenario, onRename, onDelete }: ScenarioHeaderProps) {
+function ScenarioHeader({ scenario, schedule, current, onRename, onDelete }: ScenarioHeaderProps) {
   const events = scenario.partPayments.length + scenario.rateChanges.length;
 
   return (
@@ -287,12 +293,27 @@ function ScenarioHeader({ scenario, onRename, onDelete }: ScenarioHeaderProps) {
           Delete scenario
         </button>
       </div>
+      {events > 0 && schedule && <ScenarioOutcome current={current} schedule={schedule} />}
       <p className="subtle m-0 mt-3 text-sm">
         {events === 0
-          ? 'Add a pretend part payment or rate change below. The comparison updates as you go.'
-          : `Adds ${scenarioContents(scenario)} to your real ones. Its row in the comparison is highlighted.`}
+          ? 'Add a pretend part payment or rate change below to see what it changes.'
+          : `Adds ${scenarioContents(scenario)} to your real ones. Its row in the comparison below is highlighted.`}
       </p>
     </Card>
+  );
+}
+
+function ScenarioOutcome({ schedule, current }: { schedule: LoanSchedule; current: LoanSchedule }) {
+  const monthsSaved = current.summary.totalMonths - schedule.summary.totalMonths;
+  const interestSaved = current.summary.totalInterest - schedule.summary.totalInterest;
+
+  return (
+    <p className="scenario-outcome" role="status">
+      <span className={toneClass(toneOf(monthsSaved))}>
+        {timeShift(monthsSaved)}, {interestShift(interestSaved)}
+      </span>{' '}
+      than your current plan. Debt-free {formatMonthYear(schedule.summary.payoffDate)}.
+    </p>
   );
 }
 
@@ -353,7 +374,7 @@ function ScenarioEvents({
             submitLabel="Add payment"
             valueHint={AMOUNT_HINT}
             valueLabel="Amount"
-            valuePlaceholder="1,00,000"
+            valueExample="1,00,000"
             valuePrefix="₹"
             onAdd={(date, amount) =>
               onPatch({ partPayments: sortByDate([...scenario.partPayments, { date, amount }]) })
@@ -391,7 +412,7 @@ function ScenarioEvents({
             submitLabel="Add rate"
             valueHint={RATE_HINT}
             valueLabel="New rate"
-            valuePlaceholder={currentRate.toFixed(2)}
+            valueExample={exampleRate(currentRate)}
             valueSuffix="%"
             onAdd={(date, rate) =>
               onPatch({ rateChanges: sortByDate([...scenario.rateChanges, { date, rate }]) })

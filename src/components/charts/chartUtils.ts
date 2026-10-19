@@ -1,7 +1,5 @@
 import { useLayoutEffect, useState } from 'react';
 
-import { formatMonthYear } from '../../utils/format';
-
 /**
  * Measures the width of a chart container so the SVG can be drawn at 1:1 scale.
  *
@@ -113,17 +111,6 @@ export function yearTicks(
   }
 
   return ticks;
-}
-
-/**
- * Formats an ISO date as a short month and two-digit year for tight axis labels.
- *
- * @param isoDate - ISO date string.
- * @returns Label such as `Nov '23`.
- */
-export function shortMonthYear(isoDate: string): string {
-  const [month = '', year = ''] = formatMonthYear(isoDate).split(' ');
-  return `${month} '${year.slice(2)}`;
 }
 
 /**

@@ -302,8 +302,15 @@
 
   .topbar p {
     margin: 4px 0 0;
+    text-wrap: balance;
     color: var(--ink-3);
     font-size: 14px;
+  }
+
+  .topbar .topbar-note {
+    display: none;
+    margin-top: 8px;
+    font-size: 11px;
   }
 
   .content {
@@ -345,6 +352,11 @@
     font-weight: 700;
   }
 
+  .field-example {
+    color: var(--ink-3);
+    font-weight: 600;
+  }
+
   .subtle {
     color: var(--ink-3);
   }
@@ -364,6 +376,7 @@
 
   .footnote {
     margin: 12px 0 0;
+    text-wrap: pretty;
     color: var(--ink-3);
     font-size: 12px;
     line-height: 1.55;
@@ -403,6 +416,7 @@
   .card-head p {
     max-width: 640px;
     margin: 6px 0 0;
+    text-wrap: pretty;
     color: var(--ink-3);
     font-size: 13px;
     line-height: 1.5;
@@ -428,8 +442,17 @@
     line-height: 1.12;
   }
 
+  .kpi-value-note {
+    color: var(--ink-3);
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  /* Short lines wrap evenly, so a detail never ends on one stranded word. */
   .kpi-detail {
     margin-top: 6px;
+    text-wrap: balance;
     color: var(--ink-3);
     font-size: 12.5px;
     font-weight: 600;
@@ -486,45 +509,47 @@
   .hero-title em {
     color: var(--hero-accent);
     font-style: normal;
+  }
+
+  /* "11 years" and "3 months" may wrap apart on a phone, but never inside. */
+  .hero-title em > span {
     white-space: nowrap;
   }
 
-  .hero-title.is-behind em {
-    color: #ffab9e;
+  .hero-quote {
+    max-width: 560px;
+    margin: 18px 0 0;
+    padding: 2px 0 2px 14px;
+    border-left: 3px solid var(--hero-accent);
+  }
+
+  .hero-quote blockquote {
+    margin: 0;
+  }
+
+  .hero-quote p {
+    margin: 0;
+    text-wrap: pretty;
+    color: #fff;
+    font-size: 15px;
+    font-style: italic;
+    line-height: 1.55;
+  }
+
+  .hero-quote figcaption {
+    margin-top: 6px;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 12.5px;
+    font-weight: 700;
   }
 
   .hero-copy {
     max-width: 560px;
     margin: 14px 0 0;
-    text-wrap: pretty;
+    text-wrap: balance;
     color: rgba(255, 255, 255, 0.86);
     font-size: 15.5px;
     line-height: 1.65;
-  }
-
-  .hero-status {
-    display: inline-flex;
-    gap: 8px;
-    align-items: center;
-    margin-top: 12px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    color: #fff;
-    background: rgba(255, 255, 255, 0.12);
-    font-size: 12px;
-    font-weight: 700;
-  }
-
-  .hero-status::before {
-    width: 7px;
-    height: 7px;
-    border-radius: 999px;
-    background: var(--hero-accent);
-    content: '';
-  }
-
-  .hero-status.is-behind::before {
-    background: #ffab9e;
   }
 
   .plan-compare {
@@ -627,6 +652,8 @@
     display: inline-flex;
     gap: 6px;
     align-items: center;
+    min-height: 44px;
+    margin-block: -12px;
     padding: 0;
     border: 0;
     color: var(--primary);
@@ -857,6 +884,15 @@
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
+  }
+
+  .event-row.is-best {
+    background: var(--primary-soft);
+    box-shadow: inset 3px 0 0 var(--primary);
+  }
+
+  .event-stat .chip-best {
+    margin-left: 6px;
   }
 
   .event-row.is-foot {
@@ -1145,8 +1181,23 @@
     margin-bottom: 14px;
   }
 
+  .chart-readout .hint-touch {
+    display: none;
+  }
+
+  @media (hover: none) and (pointer: coarse) {
+    .chart-readout .hint-fine {
+      display: none;
+    }
+
+    .chart-readout .hint-touch {
+      display: inline;
+    }
+  }
+
   .chart-readout-note {
     display: flex;
+    text-wrap: balance;
     grid-column: 1 / -1;
     align-items: center;
     margin: 0;
@@ -1228,7 +1279,7 @@
 
   /* Fixed line heights make every tile 56px tall, so the readout's minimum height can
      match the tiles exactly and the chart never moves when they appear. */
-  .chart-readout span {
+  .chart-readout > div > span {
     display: block;
     color: var(--ink-3);
     font-size: 11px;
@@ -1290,8 +1341,15 @@
 
   /* ---------- Schedule ---------- */
 
-  .schedule-wrap {
+  .table-wrap.schedule-wrap {
+    overflow: clip;
     container: schedule / inline-size;
+  }
+
+  .schedule-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
   }
 
   .schedule-table tbody + tbody {
@@ -1444,6 +1502,10 @@
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
+  .settings-row p {
+    text-wrap: pretty;
+  }
+
   /* ---------- Scenarios ---------- */
 
   .scenario-tabs {
@@ -1480,6 +1542,18 @@
 
   .table tr.is-active-row td:first-child {
     box-shadow: inset 3px 0 0 var(--primary);
+  }
+
+  .scenario-outcome {
+    margin: 14px 0 0;
+    color: var(--ink-2);
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.5;
+  }
+
+  .scenario-outcome > span {
+    font-weight: 800;
   }
 
   .preset-list {
@@ -1541,7 +1615,8 @@
       padding: 0 4px;
     }
 
-    .schedule-table .month-row .chip-prepay.only-narrow {
+    .schedule-table .month-row .chip-prepay.only-narrow,
+    .schedule-table .month-row .chip-next {
       display: flex;
       width: fit-content;
       margin: 2px 0 0;
@@ -1736,6 +1811,10 @@
       display: none;
     }
 
+    .topbar .topbar-note {
+      display: block;
+    }
+
     .sidebar-nav {
       grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 2px;
@@ -1820,6 +1899,10 @@
 
     .hero-copy {
       font-size: 14.5px;
+    }
+
+    .hero-quote p {
+      font-size: 14px;
     }
 
     .plan-compare {
@@ -1922,10 +2005,15 @@
     }
   }
 
-  /* Small phones (320 to 360px wide) get a little more room for tables. */
+  /* Small phones (320 to 360px wide) get a little more room for tables and tab labels. */
   @media (max-width: 360px) {
     .content {
       padding-inline: 12px;
+    }
+
+    .nav-link {
+      padding-inline: 0;
+      font-size: 10px;
     }
 
     .card {

@@ -14,7 +14,7 @@ const navItems = [
   { id: 'dashboard', label: 'Dashboard', short: 'Home', icon: LayoutDashboard },
   { id: 'schedule', label: 'Schedule', short: 'Schedule', icon: CalendarRange },
   { id: 'rates', label: 'Rate changes', short: 'Rates', icon: Percent },
-  { id: 'parts', label: 'Part payments', short: 'Prepay', icon: HandCoins },
+  { id: 'parts', label: 'Part payments', short: 'Parts', icon: HandCoins },
   { id: 'whatif', label: 'What-if', short: 'What-if', icon: FlaskConical },
   { id: 'settings', label: 'Settings', short: 'Settings', icon: Settings },
 ] satisfies Array<{ id: PageId; label: string; short: string; icon: typeof Settings }>;
@@ -33,6 +33,8 @@ type AppLayoutProps = {
   onNavigate: (page: PageId) => void;
   loanLabel: string;
   loanDetail: string;
+  /** One line under the page title on phones, where the sidebar footer is hidden. */
+  sampleNote?: string;
   banner?: ReactNode;
   children: ReactNode;
 };
@@ -48,6 +50,7 @@ type AppLayoutProps = {
  * @param props.onNavigate - Navigation callback for the nav buttons.
  * @param props.loanLabel - Name of the active loan for the sidebar footer.
  * @param props.loanDetail - Size and first EMI of the loan, under its name.
+ * @param props.sampleNote - Says the figures are made up, for phones.
  * @param props.banner - Optional notices shown under the page header.
  * @param props.children - Active page element.
  * @returns App layout element.
@@ -57,6 +60,7 @@ export function AppLayout({
   onNavigate,
   loanLabel,
   loanDetail,
+  sampleNote,
   banner,
   children,
 }: AppLayoutProps) {
@@ -94,6 +98,7 @@ export function AppLayout({
         <header className="topbar">
           <h1>{copy.title}</h1>
           <p>{copy.subtitle}</p>
+          {sampleNote && <p className="label topbar-note">{sampleNote}</p>}
         </header>
         {banner}
         {children}

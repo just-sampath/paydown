@@ -25,6 +25,12 @@ function textOutsideCharts(markup: string): string {
   return parts.join(' | ');
 }
 
+function heroCopyText(markup: string): string {
+  const host = document.createElement('div');
+  host.innerHTML = markup;
+  return host.querySelector('.hero-copy')?.textContent ?? '';
+}
+
 function repeated(values: string[]): string[] {
   return values.filter((value, index) => values.indexOf(value) !== index);
 }
@@ -36,14 +42,20 @@ describe('dashboard', () => {
     );
 
     expect(markup).toContain('Sample loan with made-up numbers');
-    expect(markup).toContain('Debt-free <em>5 yr 2 mo</em> sooner');
-    expect(markup).toContain('took that much off the original term.');
-    expect(markup).toContain('Ahead of the original plan');
+    expect(textOutsideCharts(markup).replace(/(\s*\|\s*)+/g, ' ')).toContain(
+      '11 years 5 months left to pay',
+    );
+    // The headline may wrap between the parts on a phone, never inside one.
+    expect(markup).toContain('<em><span>11 years</span> <span>5 months</span></em>');
+    expect(heroCopyText(markup)).toContain('took 5 yr 2 mo off the original term.');
+    expect(markup).toContain('<span class="whitespace-nowrap">5 yr 2 mo</span>');
+    expect(markup).not.toContain('Ahead of the original plan');
     expect(markup).toContain('Mar 2043');
     expect(markup).toContain('Jan 2038');
     expect(markup).toContain('EMIs left');
     expect(markup).toContain('41 EMIs paid so far');
-    expect(markup).toContain('0.80 pts lower than at the start');
+    expect(markup).toContain('Down from 9.15%');
+    expect(markup).not.toContain('pts');
     expect(markup).not.toContain('Where the money goes');
     expect(markup).not.toContain('Payment calendar');
   });
@@ -63,30 +75,38 @@ describe('dashboard', () => {
     expect(repeated(months)).toEqual([]);
   });
 
-  test('says "later" in plain words when rate rises push the payoff out', () => {
+  test('says how much time rate rises added, in plain words', () => {
     const behind = buildLoanAnalysis(
       { ...sampleLoan.loan, rateChanges: [{ date: '2023-11-01', rate: 10.5 }], partPayments: [] },
       today,
     );
     const markup = renderToStaticMarkup(<DashboardPage analysis={behind} />);
 
-    expect(markup).toContain('later');
-    expect(markup).toContain('Behind the original plan');
+    expect(heroCopyText(markup)).toMatch(/added \d+ (yr|mo)[^.]* to the original term\./);
     expect(markup).toContain('Interest added');
-    expect(markup).toContain('higher than at the start');
+    expect(markup).toContain('Up from 9.15%');
     expect(markup).not.toContain('On track');
-    expect(markup).not.toMatch(/Debt-free <em>-/);
+    expect(heroCopyText(markup)).not.toContain('-');
   });
 
-  test('names the payoff month when nothing has changed', () => {
+  test('still shows the time left when nothing has changed', () => {
     const unchanged = buildLoanAnalysis(
       { ...sampleLoan.loan, rateChanges: [], partPayments: [] },
       today,
     );
     const markup = renderToStaticMarkup(<DashboardPage analysis={unchanged} />);
 
-    expect(markup).toContain('Debt-free in <em>');
-    expect(markup).toContain('On the original plan');
+    expect(markup).toContain('left to pay');
+    expect(markup).toContain('Your loan is still on its original term.');
     expect(markup).toContain('No rate changes or part payments yet');
+  });
+
+  test('says the loan is paid off once the last EMI is behind it', () => {
+    const markup = renderToStaticMarkup(
+      <DashboardPage analysis={buildLoanAnalysis(sampleLoan.loan, '2045-01-01')} />,
+    );
+
+    expect(markup).toContain('Your loan is <em>paid off</em>');
+    expect(markup).not.toContain('left to pay');
   });
 });

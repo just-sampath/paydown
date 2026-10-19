@@ -26,7 +26,7 @@ Everyone sees a fictional sample loan, defined in `src/config/sampleLoan.ts`:
 
 ## Private Data Set
 
-A real loan can ship with the site as `src/vault/set-a.vault.json`, encrypted in the browser-compatible WebCrypto format: AES-256-GCM with a PBKDF2-SHA256 key (1,000,000 iterations) and fixed-size padding. **Settings → Data sets → unlock set a** prompts for the passphrase. The plaintext lives only in the gitignored `.private/` folder, and every change goes through the passphrase-gated CLI:
+A real loan can ship with the site as `src/vault/set-a.vault.json`, encrypted in the browser-compatible WebCrypto format: AES-256-GCM with a PBKDF2-SHA256 key (1,000,000 iterations) and fixed-size padding. **Settings → Data on this device → Unlock set a** prompts for the passphrase. The plaintext lives only in the gitignored `.private/` folder, and every change goes through the passphrase-gated CLI:
 
 ```bash
 bun run vault add-payment --date 2026-09-14 --amount 90000

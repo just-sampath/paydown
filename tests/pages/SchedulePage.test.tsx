@@ -15,6 +15,7 @@ describe('payment schedule', () => {
     expect(text).toContain('₹40.6L through EMIs, ₹4.4L in part payments');
     expect(text).toContain('₹32.21L EMI interest, ₹12K interest outside EMIs');
     expect(text).toContain('Total paid');
+    expect(text).toContain('Principal plus interest');
     expect(text).toContain('62 fewer than the original 240');
 
     cleanup();
@@ -24,7 +25,10 @@ describe('payment schedule', () => {
     const { container, cleanup } = render(<SchedulePage analysis={analysis} />);
 
     expect(container.textContent).toContain('Jul 2026');
-    expect(container.querySelector('[aria-current="date"]')?.textContent).toContain('Aug 2026');
+    const next = container.querySelector('[aria-current="date"]');
+    expect(next?.textContent).toContain('Aug 2026');
+    // The label stays on narrow screens too, so the row isn't marked by colour alone.
+    expect(next?.querySelector('.chip-next')?.className).not.toContain('only-wide');
     expect(container.textContent).not.toContain('Jan 2030');
 
     const year2030 = Array.from(container.querySelectorAll<HTMLButtonElement>('.year-button')).find(
@@ -61,6 +65,20 @@ describe('payment schedule', () => {
     expect(scrollIntoView).toHaveBeenCalledWith(expect.objectContaining({ block: 'center' }));
     expect(scrollIntoView.mock.contexts[0]).toBe(row);
 
+    cleanup();
+  });
+
+  test('shows the rate on the first EMI and on months it changed, not on every row', () => {
+    const { container, cleanup } = render(<SchedulePage analysis={analysis} />);
+
+    click(buttonByText(container, 'Open all years'));
+    const rateCells = Array.from(
+      container.querySelectorAll<HTMLTableCellElement>('.month-row td:last-child'),
+    )
+      .map((cell) => cell.textContent)
+      .filter(Boolean);
+
+    expect(rateCells).toEqual(['9.15%', '8.95%', '8.65%', '8.35%']);
     cleanup();
   });
 });
