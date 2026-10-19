@@ -58,6 +58,43 @@ The same module, `src/features/vault/vaultCrypto.ts`, runs in the browser, in th
 - **Edits made in the browser while unlocked are temporary.** Permanent changes go through the CLI.
 - **The encrypted file is a lazily loaded chunk**, so visitors who never unlock never download it.
 - **Old plaintext is deleted.** Older versions of the app kept loan events in `localStorage` under `paydown:data:v1`. The app deletes that key on startup.
+- **Terms can be edited too,** with the same rule: the edits last until the tab closes.
+
+## Your loan (any visitor)
+
+Any visitor can keep their own loan in the app: **Settings → Data on this device → Start my own loan**. It uses the same crypto as set a, with two differences: it is made and saved in the browser, and it can move between devices by link.
+
+**Where things live.**
+
+| What                        | Where                                                           |
+| --------------------------- | --------------------------------------------------------------- |
+| The encrypted blob          | `localStorage` under `paydown:mine:v1` (ciphertext only)        |
+| The data key, if remembered | IndexedDB `paydown/keys/mine`, as a non-extractable `CryptoKey` |
+| Which loan was showing      | `localStorage` under `paydown:active:v1` (a hint, no data)      |
+| The passphrase              | Nowhere. It lives in a dialog's state until submit.             |
+
+**Passphrase.** At least 20 characters, the same rule as the CLI (`src/features/vault/passphrase.ts`). **Suggest one** makes 5 groups of 4 symbols from a 32-symbol alphabet with no look-alikes (100 bits). There is no recovery: a lost passphrase means a lost loan.
+
+**Creating it.** The browser seals the profile as **version 2** (below), then opens the result again with the passphrase. That checks the round trip, as the CLI does, and yields the data key as a non-extractable key that can encrypt and decrypt. Starting from the sample takes its terms, events and scenarios and then resets the sample, so figures typed into the plain-text sample don't stay behind.
+
+**Saving edits.** While the loan is open, every edit re-encrypts the data layer with a fresh random IV under the same data key (`resealData`). The salt and wrapped key stay, so no passphrase is needed. AES-GCM with random 96-bit IVs stays safe far below 2³² saves under one key. A profile too large for 16 KB is refused and a banner says the latest edits aren't saved.
+
+**Opening it.** One loan is open at a time. Opening your loan locks set a and forgets set a's device key, and the other way round. **Lock** forgets the device key and keeps the blob. **Remove from this device** deletes both.
+
+### Version 2 padding
+
+Version 2 is version 1 with one change: the padded plaintext is the smallest of 2, 4, 8 or 16 KB that fits, so a link stays short. A link reveals only that size class. The version is part of the additional authenticated data, so a version 2 blob relabelled as version 1 fails to decrypt. The CLI still writes version 1.
+
+### Links
+
+A link looks like `https://…/paydown/#open=<base64url>`. The text after `#open=` packs the blob as bytes: version (1), iterations (4, big-endian), salt (16), wrap IV (12), wrapped key (48), data IV (12), data ciphertext (the rest). A typical loan gives a link of about 2,800 to 5,500 characters.
+
+- **The fragment never reaches a server.** Browsers don't send it in requests or in `Referer`. The app removes it from the address bar with `history.replaceState` as soon as it reads it.
+- **The passphrase is never in the link.** Send it some other way.
+- **Treat a link as public.** It ends up in chat and browser history. Like set a's file, its safety rests on passphrase strength × PBKDF2 cost, which is why the 20-character rule applies.
+- **A link is a snapshot.** Anyone with an old link and its passphrase can read that copy forever. Later edits or a new passphrase don't change links already sent.
+- **Opening a link is checked.** Text over 32,000 characters is refused before decoding, every field's size is checked, and iteration counts outside 600,000 to 10,000,000 are refused (so a link can't hang the page). The decrypted profile goes through `parseLoanProfile`. If this device already has a loan, the app asks before replacing it.
+- **Out of scope:** two tabs editing the same loan at once. The last save wins.
 
 ## The CLI
 

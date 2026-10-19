@@ -12,15 +12,15 @@ export type DeviceKeyStore = {
 
 const DB_NAME = 'paydown';
 const STORE_NAME = 'keys';
-const RECORD_ID = 'set-a';
 
 /**
  * Creates the IndexedDB-backed key store. Every call degrades to a no-op when
  * IndexedDB is unavailable (for example private browsing modes that block it).
  *
+ * @param recordId - Which loan's key: `'set-a'` or `'mine'`. Each has its own record.
  * @returns Device key store.
  */
-export function createIndexedDbKeyStore(): DeviceKeyStore {
+export function createIndexedDbKeyStore(recordId = 'set-a'): DeviceKeyStore {
   return {
     get: async () => {
       const db = await openDb();
@@ -28,7 +28,7 @@ export function createIndexedDbKeyStore(): DeviceKeyStore {
         return undefined;
       }
       const value = await request<unknown>(
-        db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(RECORD_ID),
+        db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(recordId),
       );
       db.close();
       return value instanceof CryptoKey ? value : undefined;
@@ -39,7 +39,7 @@ export function createIndexedDbKeyStore(): DeviceKeyStore {
         return;
       }
       await request(
-        db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put(key, RECORD_ID),
+        db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put(key, recordId),
       );
       db.close();
     },
@@ -49,7 +49,7 @@ export function createIndexedDbKeyStore(): DeviceKeyStore {
         return;
       }
       await request(
-        db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).delete(RECORD_ID),
+        db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).delete(recordId),
       );
       db.close();
     },

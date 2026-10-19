@@ -4,7 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vi
 
 import { App } from '../../src/app/App';
 import { createMemoryKeyStore, type DeviceKeyStore } from '../../src/app/deviceKeyStore';
-import { LEGACY_DATA_STORAGE_KEY } from '../../src/app/storage';
+import { LEGACY_DATA_STORAGE_KEY, MY_LOAN_STORAGE_KEY } from '../../src/app/storage';
 import { sampleLoan } from '../../src/config/sampleLoan';
 import type { LoanProfile } from '../../src/features/vault/loanProfile';
 import { MIN_ITERATIONS, sealProfile, type VaultBlob } from '../../src/features/vault/vaultCrypto';
@@ -141,7 +141,152 @@ describe('app data sets', () => {
   });
 });
 
-function mount(keyStore: DeviceKeyStore, vaultAvailable = true) {
+describe('your own loan', () => {
+  const MY_PASSPHRASE = 'my own loan passphrase, long enough';
+
+  test('is created encrypted, locks on reload, and unlocks from the banner', async () => {
+    const myKeyStore = createMemoryKeyStore();
+    const first = mount(createMemoryKeyStore(), true, myKeyStore);
+
+    await createLoan(first.container, MY_PASSPHRASE, false);
+    expect(sidebar(first.container)).toContain('Home loan');
+    expect(first.container.textContent).toContain('Your loan is open');
+
+    const stored = window.localStorage.getItem(MY_LOAN_STORAGE_KEY) ?? '';
+    expect(JSON.parse(stored)).toMatchObject({ v: 2, kdf: { name: 'PBKDF2-SHA256' } });
+    expectNoPlaintext();
+    expect(await myKeyStore.get()).toBeUndefined();
+
+    unmount();
+    const second = mount(createMemoryKeyStore(), true, myKeyStore);
+    await vi.waitFor(() =>
+      expect(second.container.textContent).toContain('Your loan is on this device and locked.'),
+    );
+    expect(sidebar(second.container)).toContain('Sample loan');
+
+    act(() =>
+      buttonByText(second.container.querySelector('.banner') as HTMLElement, 'Unlock')?.click(),
+    );
+    await submitDialog(second.container, MY_PASSPHRASE);
+    await vi.waitFor(() => expect(sidebar(second.container)).toContain('Home loan'), {
+      timeout: 10_000,
+    });
+  }, 30_000);
+
+  test('remembers the device, saves every edit encrypted, and restores the edit', async () => {
+    const myKeyStore = createMemoryKeyStore();
+    const first = mount(createMemoryKeyStore(), true, myKeyStore);
+    await createLoan(first.container, MY_PASSPHRASE, true);
+    const before = window.localStorage.getItem(MY_LOAN_STORAGE_KEY);
+
+    setValue(inputByLabel(first.container, 'Starting rate'), '7.25');
+    await vi.waitFor(() =>
+      expect(window.localStorage.getItem(MY_LOAN_STORAGE_KEY)).not.toBe(before),
+    );
+    expectNoPlaintext();
+
+    unmount();
+    const second = mount(createMemoryKeyStore(), true, myKeyStore);
+    await vi.waitFor(() => expect(second.container.textContent).toContain('Your loan is open'), {
+      timeout: 10_000,
+    });
+    expect(inputByLabel(second.container, 'Starting rate').value).toBe('7.25');
+  }, 30_000);
+
+  test('moves to another device by link, after confirming a replace', async () => {
+    const writeText = vi.fn((_text: string) => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const first = mount(createMemoryKeyStore(), true, createMemoryKeyStore());
+    await createLoan(first.container, MY_PASSPHRASE, false);
+    await act(async () => buttonByText(first.container, 'Copy link')?.click());
+    const link = writeText.mock.calls[0]?.[0] ?? '';
+    expect(link).toContain('#open=');
+    unmount();
+
+    // Another device: nothing stored, and the link opened in the address bar.
+    window.localStorage.clear();
+    window.location.hash = new URL(link).hash;
+    const second = mount(createMemoryKeyStore(), true, createMemoryKeyStore());
+    expect(window.location.hash).toBe('#dashboard');
+    expect(second.container.textContent).toContain('Open a shared loan');
+    await submitDialog(second.container, MY_PASSPHRASE);
+    await vi.waitFor(() => expect(sidebar(second.container)).toContain('Home loan'), {
+      timeout: 10_000,
+    });
+    unmount();
+
+    // A device that already has a loan asks before replacing it.
+    window.location.hash = new URL(link).hash;
+    const third = mount(createMemoryKeyStore(), true, createMemoryKeyStore());
+    const confirm = third.container.querySelector('[role="alertdialog"]') as HTMLElement;
+    expect(confirm.textContent).toContain('Replace the loan on this device?');
+    act(() => buttonByText(confirm, 'Cancel')?.click());
+    expect(third.container.textContent).not.toContain('Open a shared loan');
+
+    Reflect.deleteProperty(navigator, 'clipboard');
+  }, 60_000);
+
+  test('starting from the sample takes its figures and resets the sample', async () => {
+    const first = mount(createMemoryKeyStore(), true, createMemoryKeyStore());
+    setValue(inputByLabel(first.container, 'Amount borrowed'), '3200000');
+    expect(window.localStorage.getItem('paydown:sample:v3')).toContain('3200000');
+
+    await createLoan(first.container, MY_PASSPHRASE, false, true);
+    expect(inputByLabel(first.container, 'Amount borrowed').value).toBe('32,00,000');
+    expect(window.localStorage.getItem('paydown:sample:v3')).not.toContain('3200000');
+
+    await act(async () => buttonByText(first.container, 'Remove from this device')?.click());
+    const dialog = first.container.querySelector('[role="alertdialog"]') as HTMLElement;
+    await act(async () => buttonByText(dialog, 'Remove')?.click());
+    await vi.waitFor(() => expect(sidebar(first.container)).toContain('Sample loan'));
+    expect(window.localStorage.getItem(MY_LOAN_STORAGE_KEY)).toBeNull();
+    expect(inputByLabel(first.container, 'Amount borrowed').value).toBe('45,00,000');
+  }, 30_000);
+
+  async function createLoan(
+    container: HTMLElement,
+    passphrase: string,
+    remember: boolean,
+    fromSample = false,
+  ) {
+    act(() => buttonByText(container, 'Start my own loan')?.click());
+    const dialog = container.querySelector('form[role="dialog"]') as HTMLFormElement;
+
+    if (fromSample) {
+      act(() => buttonByText(dialog, 'The sample as it is now')?.click());
+    } else {
+      setValue(inputByLabel(dialog, 'Loan name'), 'Home loan');
+      setValue(inputByLabel(dialog, 'Lender'), 'Private Lender');
+      setValue(inputByLabel(dialog, 'Amount borrowed'), '3500000');
+      setValue(inputByLabel(dialog, 'Starting rate'), '8.4');
+      setValue(inputByLabel(dialog, 'Original term'), '180');
+      setValue(inputByLabel(dialog, 'First EMI'), '2024-06-05');
+    }
+    setValue(inputByLabel(dialog, 'Passphrase'), passphrase);
+    setValue(inputByLabel(dialog, 'Repeat passphrase'), passphrase);
+    if (remember) {
+      act(() => (dialog.querySelector('input[type="checkbox"]') as HTMLInputElement).click());
+    }
+
+    await act(async () => dialog.requestSubmit());
+    await vi.waitFor(() => expect(container.textContent).toContain('Your loan is open'), {
+      timeout: 10_000,
+    });
+  }
+
+  function expectNoPlaintext() {
+    const everything = JSON.stringify({ ...window.localStorage });
+    expect(everything).not.toContain('Private Lender');
+    expect(everything).not.toContain('Home loan');
+    expect(everything).not.toContain('3500000');
+  }
+});
+
+function mount(
+  keyStore: DeviceKeyStore,
+  vaultAvailable = true,
+  myKeyStore: DeviceKeyStore = createMemoryKeyStore(),
+) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -149,7 +294,9 @@ function mount(keyStore: DeviceKeyStore, vaultAvailable = true) {
   act(() => {
     root.render(
       <App
+        iterations={MIN_ITERATIONS}
         keyStore={keyStore}
+        myKeyStore={myKeyStore}
         vaultAvailable={vaultAvailable}
         vaultSource={() => Promise.resolve(JSON.parse(JSON.stringify(blob)))}
       />,
@@ -158,6 +305,28 @@ function mount(keyStore: DeviceKeyStore, vaultAvailable = true) {
 
   mounted = { container, root };
   return mounted;
+}
+
+async function submitDialog(container: HTMLElement, passphrase: string) {
+  setValue(container.querySelector('#unlock-passphrase') as HTMLInputElement, passphrase);
+  await act(async () => {
+    (container.querySelector('form[role="dialog"]') as HTMLFormElement).requestSubmit();
+  });
+}
+
+function setValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  act(() => {
+    setter?.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+function inputByLabel(container: HTMLElement, label: string): HTMLInputElement {
+  const element = Array.from(container.querySelectorAll('label')).find(
+    (item) => item.textContent === label,
+  );
+  return document.getElementById(element?.htmlFor ?? '') as HTMLInputElement;
 }
 
 function unmount() {

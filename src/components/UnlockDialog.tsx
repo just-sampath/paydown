@@ -5,12 +5,14 @@ import { ModalOverlay, useModal } from './Modal';
 type UnlockDialogProps = {
   onUnlock: (passphrase: string, remember: boolean) => Promise<void>;
   onClose: () => void;
+  title?: string;
+  description?: string;
+  wrongPassphrase?: string;
+  submitLabel?: string;
 };
 
-const WRONG_PASSPHRASE = "That passphrase didn't unlock set a.";
-
 /**
- * Modal passphrase prompt for an encrypted data set.
+ * Modal passphrase prompt for an encrypted loan: set a, your own loan, or a shared link.
  *
  * The passphrase only ever lives in this component's state and is cleared after every
  * attempt. Submission never navigates, so nothing reaches a URL. Focus stays inside the
@@ -19,9 +21,20 @@ const WRONG_PASSPHRASE = "That passphrase didn't unlock set a.";
  * @param props - Dialog props.
  * @param props.onUnlock - Attempts the unlock; rejects on a wrong passphrase.
  * @param props.onClose - Closes the dialog without unlocking.
+ * @param props.title - Heading; defaults to set a's.
+ * @param props.description - What is being unlocked, in plain words.
+ * @param props.wrongPassphrase - Error shown for a wrong passphrase.
+ * @param props.submitLabel - Text of the submit button.
  * @returns Unlock dialog element.
  */
-export function UnlockDialog({ onUnlock, onClose }: UnlockDialogProps) {
+export function UnlockDialog({
+  onUnlock,
+  onClose,
+  title = 'Unlock set a',
+  description = 'Set a is a private loan that comes encrypted with this site. Its passphrase opens it here. Without the passphrase, you keep seeing the sample loan.',
+  wrongPassphrase = "That passphrase didn't unlock set a.",
+  submitLabel = 'Unlock',
+}: UnlockDialogProps) {
   const [passphrase, setPassphrase] = useState('');
   const [remember, setRemember] = useState(false);
   const [pending, setPending] = useState(false);
@@ -50,7 +63,7 @@ export function UnlockDialog({ onUnlock, onClose }: UnlockDialogProps) {
       onClose();
     } catch (unlockError) {
       const code = (unlockError as { code?: string }).code;
-      setError(code === 'bad-passphrase' ? WRONG_PASSPHRASE : (unlockError as Error).message);
+      setError(code === 'bad-passphrase' ? wrongPassphrase : (unlockError as Error).message);
       setPending(false);
       inputRef.current?.focus();
     }
@@ -69,11 +82,10 @@ export function UnlockDialog({ onUnlock, onClose }: UnlockDialogProps) {
         role="dialog"
       >
         <h2 className="modal-title" id="unlock-title">
-          Unlock set a
+          {title}
         </h2>
         <p className="modal-body" id="unlock-description">
-          Set a is a private loan that comes encrypted with this site. Its passphrase opens it here.
-          Without the passphrase, you keep seeing the sample loan.
+          {description}
         </p>
         <div className="field-row mt-4">
           <label className="label" htmlFor="unlock-passphrase">
@@ -112,7 +124,7 @@ export function UnlockDialog({ onUnlock, onClose }: UnlockDialogProps) {
             Cancel
           </button>
           <button className="btn btn-primary" disabled={pending || passphrase === ''} type="submit">
-            {pending ? 'Unlocking…' : 'Unlock'}
+            {pending ? 'Unlocking…' : submitLabel}
           </button>
         </div>
       </form>

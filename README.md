@@ -8,7 +8,8 @@ Paydown is a Vite + React dashboard for tracking a floating-rate home loan in IN
 
 - Dashboard summary for outstanding balance, months saved, interest saved, current rate, and next EMI.
 - Month-by-month amortization schedule with rate-change and prepayment markers.
-- Editable floating-rate revisions and part payments, persisted in `localStorage` for the sample loan.
+- Editable loan terms, floating-rate revisions and part payments, persisted in `localStorage` for the sample loan.
+- Your own loan: enter it in Settings and it is kept encrypted with your passphrase on your device, never sent anywhere. Move it to another device with a link that carries only ciphertext.
 - An optional private loan shipped only as a passphrase-encrypted file and unlocked in Settings (see below).
 - What-if scenarios that layer hypothetical rate changes and prepayments over the current loan.
 - Theme and palette preferences, also persisted locally.
@@ -32,7 +33,7 @@ A real loan can ship with the site as `src/vault/set-a.vault.json`, encrypted in
 bun run vault add-payment --date 2026-09-14 --amount 90000
 ```
 
-See `docs/vault.md` for the format, threat model, CLI commands and the leak check.
+See `docs/vault.md` for the format, threat model, CLI commands and the leak check. The same file covers "Your loan": how a visitor's own loan is encrypted in the browser and shared by link.
 
 ## Tech Stack
 

@@ -45,7 +45,14 @@ tests/                 Mirrors src/ and scripts/
 docs/                  calculations.md (maths and expected figures), vault.md (encryption and CLI)
 ```
 
-`App.tsx` owns all state and computes one `LoanAnalysis` with `buildLoanAnalysis(loan, today)`. Pages get the analysis, the event lists and an `onChange` callback. They keep no loan state of their own. Sample-loan edits persist in `localStorage` under `paydown:sample:v2`, and theme prefs under `paydown:prefs:v1`. Edits made while the private set is unlocked stay in memory only.
+`App.tsx` computes one `LoanAnalysis` with `buildLoanAnalysis(loan, today)`. Loan state lives in `src/app/useLoanData.ts`, which owns three loans with one showing at a time: the sample, set a, and the visitor's own loan ("Your loan"). Pages get the analysis, the event lists and an `onChange` callback. They keep no loan state of their own.
+
+- The sample, terms included, persists in plain text in `localStorage` under `paydown:sample:v3`.
+- Your loan persists only as an encrypted vault blob under `paydown:mine:v1`. Every edit is re-encrypted as it happens. It moves between devices by a `#open=` link that carries only ciphertext. `docs/vault.md` covers this.
+- Edits to set a stay in memory only.
+- `paydown:active:v1` remembers which loan was showing, and `paydown:prefs:v1` holds theme prefs.
+
+Never write a real loan to storage in plain text. Anything that persists the visitor's own loan goes through `sealProfile` or `resealData`.
 
 Every quote in `src/data/quotes.csv` comes from a public-domain book on Project Gutenberg, with its author, topic, book title and Gutenberg link. Add only quotes you can source the same way; modern quote sites are copyrighted and forbid scraping. `DailyQuote` loads the file lazily and walks it with a fixed stride, so each day gets one quote and none repeats until all have shown.
 

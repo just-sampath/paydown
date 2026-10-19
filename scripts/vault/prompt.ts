@@ -3,7 +3,9 @@
  * interactive terminal, and never from arguments, environment variables, or files.
  */
 
-export const MIN_PASSPHRASE_LENGTH = 20;
+import { passphraseProblem } from '../../src/features/vault/passphrase';
+
+export { MIN_PASSPHRASE_LENGTH, passphraseProblem } from '../../src/features/vault/passphrase';
 
 /**
  * Fails fast when stdin is not an interactive terminal (piped input, CI, some Git Bash setups).
@@ -86,24 +88,6 @@ export async function readLine(label: string): Promise<string> {
     process.stdin.resume();
     process.stdin.on('data', onData);
   });
-}
-
-/**
- * Checks the passphrase policy.
- *
- * @param passphrase - Candidate passphrase.
- * @returns An error message, or `undefined` when acceptable.
- */
-export function passphraseProblem(passphrase: string): string | undefined {
-  if (Array.from(passphrase).length < MIN_PASSPHRASE_LENGTH) {
-    return `Use at least ${MIN_PASSPHRASE_LENGTH} characters. Five or more random words work well.`;
-  }
-
-  if (passphrase.trim() !== passphrase) {
-    return 'Leading or trailing spaces are easy to lose; remove them.';
-  }
-
-  return undefined;
 }
 
 /**

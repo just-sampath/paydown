@@ -1159,6 +1159,40 @@
     margin-top: 20px;
   }
 
+  /* A longer form: wider, and it scrolls inside the screen instead of past it. */
+  .modal-wide {
+    width: min(600px, 100%);
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+  }
+
+  .modal-section {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    margin: 18px 0 0;
+    padding: 16px 0 0;
+    border: 0;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .modal-section > legend {
+    float: left;
+    width: 100%;
+    margin-bottom: 2px;
+    padding: 0;
+  }
+
+  .modal-section.terms-form > legend + * {
+    clear: both;
+  }
+
+  .banner-actions {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 8px;
+  }
+
   /* ---------- Charts ---------- */
 
   .chart-box {
@@ -1504,6 +1538,58 @@
 
   .settings-row p {
     text-wrap: pretty;
+  }
+
+  .row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  /* Editable loan terms: as many columns as fit at 220px each. */
+  .terms-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+    gap: 14px 20px;
+    align-items: start;
+  }
+
+  .shared-link {
+    display: grid;
+    gap: 8px;
+    padding: 14px 0;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .shared-link .input {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 12.5px;
+  }
+
+  .link-input {
+    min-height: 76px;
+    resize: vertical;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 12.5px;
+    word-break: break-all;
+  }
+
+  .suggested-passphrase {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .suggested-passphrase code {
+    padding: 4px 8px;
+    border-radius: 6px;
+    color: var(--ink);
+    background: var(--surface-3);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
   }
 
   /* ---------- Scenarios ---------- */

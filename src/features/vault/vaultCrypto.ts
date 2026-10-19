@@ -8,21 +8,28 @@ import { parseLoanProfile, type LoanProfile } from './loanProfile';
  * with the header bound as additional authenticated data. See docs/vault.md.
  *
  * Pure WebCrypto: runs unchanged in browsers, Bun, and Node.
+ *
+ * Version 1 (the CLI's set a) always pads to {@link PADDED_BYTES}. Version 2 (made in the
+ * browser) pads to the smallest of {@link V2_BUCKETS} that fits, so a share link stays short
+ * and still reveals only a coarse size class.
  */
 
 export const VAULT_VERSION = 1;
+export type VaultVersion = 1 | 2;
 export const KDF_NAME = 'PBKDF2-SHA256';
 export const DEFAULT_ITERATIONS = 1_000_000;
 export const MIN_ITERATIONS = 600_000;
 export const MAX_ITERATIONS = 10_000_000;
 export const PADDED_BYTES = 16_384;
 export const MAX_PAYLOAD_BYTES = PADDED_BYTES - 4;
-const SALT_BYTES = 16;
-const IV_BYTES = 12;
+export const V2_BUCKETS = [2_048, 4_096, 8_192, 16_384] as const;
+export const SALT_BYTES = 16;
+export const IV_BYTES = 12;
 const AAD_PREFIX = 'paydown-vault';
+const LENGTH_BYTES = 4;
 
 export type VaultBlob = {
-  v: 1;
+  v: VaultVersion;
   kdf: { name: typeof KDF_NAME; iterations: number; salt: string };
   wrap: { iv: string; ct: string };
   data: { iv: string; ct: string };
@@ -47,6 +54,8 @@ export type SealOptions = {
   iterations?: number;
   /** Lowest iteration count accepted; only tests lower this. */
   minIterations?: number;
+  /** Format to write; defaults to 1 (fixed size). The browser writes 2 (size buckets). */
+  version?: VaultVersion;
 };
 
 export type OpenOptions = {
@@ -54,6 +63,11 @@ export type OpenOptions = {
   minIterations?: number;
   /** Whether the unwrapped data key may be exported. Only the CLI needs `true` (to re-wrap it). */
   extractableDek?: boolean;
+  /**
+   * Whether the unwrapped key may also encrypt, so the browser can save edits without the
+   * passphrase. It stays non-extractable either way.
+   */
+  writable?: boolean;
 };
 
 export type OpenedVault = {
@@ -74,6 +88,7 @@ export async function sealProfile(
   passphrase: string,
   options: SealOptions = {},
 ): Promise<VaultBlob> {
+  const version = options.version ?? VAULT_VERSION;
   const iterations = options.iterations ?? DEFAULT_ITERATIONS;
   assertIterations(iterations, options.minIterations ?? MIN_ITERATIONS);
 
@@ -83,24 +98,57 @@ export async function sealProfile(
   const kek = await deriveKek(passphrase, salt, iterations);
   const dek = options.dek ?? (await generateDek());
   const wrapIv = randomBytes(IV_BYTES);
-  const dataIv = randomBytes(IV_BYTES);
+  const padded = padPayload(profile, version);
   const wrapped = await subtle.wrapKey('raw', dek, kek, {
     name: 'AES-GCM',
     iv: wrapIv,
-    additionalData: aad(iterations, saltText, 'wrap'),
+    additionalData: aad(version, iterations, saltText, 'wrap'),
   });
-  const ciphertext = await subtle.encrypt(
-    { name: 'AES-GCM', iv: dataIv, additionalData: aad(iterations, saltText, 'data') },
-    dek,
-    padPayload(profile),
-  );
-
-  return {
-    v: VAULT_VERSION,
+  const header = {
+    v: version,
     kdf: { name: KDF_NAME, iterations, salt: saltText },
     wrap: { iv: toBase64(wrapIv), ct: toBase64(new Uint8Array(wrapped)) },
-    data: { iv: toBase64(dataIv), ct: toBase64(new Uint8Array(ciphertext)) },
-  };
+  } satisfies Omit<VaultBlob, 'data'>;
+
+  return { ...header, data: await encryptData(header, dek, padded) };
+}
+
+/**
+ * Re-encrypts only the data layer under the same data key, with a fresh IV. The salt and
+ * the wrapped key stay as they are, so this needs no passphrase. The browser uses it to
+ * save edits to an unlocked loan.
+ *
+ * @param profile - Validated loan profile to store.
+ * @param blob - The blob the data key came from.
+ * @param dek - Data key that can encrypt (opened with `writable`).
+ * @returns A new blob with the same header and new data ciphertext.
+ */
+export async function resealData(
+  profile: LoanProfile,
+  blob: VaultBlob,
+  dek: CryptoKey,
+): Promise<VaultBlob> {
+  const padded = padPayload(profile, blob.v);
+  return { v: blob.v, kdf: blob.kdf, wrap: blob.wrap, data: await encryptData(blob, dek, padded) };
+}
+
+async function encryptData(
+  header: Pick<VaultBlob, 'v' | 'kdf'>,
+  dek: CryptoKey,
+  padded: Uint8Array<ArrayBuffer>,
+): Promise<VaultBlob['data']> {
+  const iv = randomBytes(IV_BYTES);
+  const ciphertext = await getSubtle().encrypt(
+    {
+      name: 'AES-GCM',
+      iv,
+      additionalData: aad(header.v, header.kdf.iterations, header.kdf.salt, 'data'),
+    },
+    dek,
+    padded,
+  );
+
+  return { iv: toBase64(iv), ct: toBase64(new Uint8Array(ciphertext)) };
 }
 
 /**
@@ -131,11 +179,13 @@ export async function openBlob(
       {
         name: 'AES-GCM',
         iv: fromBase64(blob.wrap.iv),
-        additionalData: aad(blob.kdf.iterations, blob.kdf.salt, 'wrap'),
+        additionalData: aad(blob.v, blob.kdf.iterations, blob.kdf.salt, 'wrap'),
       },
       { name: 'AES-GCM' },
       options.extractableDek ?? false,
-      options.extractableDek === true ? ['encrypt', 'decrypt'] : ['decrypt'],
+      options.extractableDek === true || options.writable === true
+        ? ['encrypt', 'decrypt']
+        : ['decrypt'],
     );
   } catch {
     throw new VaultError('bad-passphrase', "That passphrase didn't unlock this data set.");
@@ -162,35 +212,47 @@ export async function openBlobWithKey(
 }
 
 /**
- * Pads a profile to exactly {@link PADDED_BYTES}: 4-byte big-endian length, compact JSON, zero fill.
+ * Pads a profile: 4-byte big-endian length, compact JSON, zero fill. Version 1 always fills
+ * {@link PADDED_BYTES}; version 2 fills the smallest of {@link V2_BUCKETS} that fits.
  *
  * @param profile - Profile to serialize.
- * @returns Fixed-size plaintext buffer.
+ * @param version - Vault format the padding is for.
+ * @returns Padded plaintext buffer.
  */
-export function padPayload(profile: LoanProfile): Uint8Array<ArrayBuffer> {
+export function padPayload(
+  profile: LoanProfile,
+  version: VaultVersion = VAULT_VERSION,
+): Uint8Array<ArrayBuffer> {
   const json = new TextEncoder().encode(JSON.stringify(profile));
 
   if (json.length > MAX_PAYLOAD_BYTES) {
     throw new VaultError(
       'too-large',
-      `Profile is ${json.length} bytes; the fixed vault size allows ${MAX_PAYLOAD_BYTES}.`,
+      `Profile is ${json.length} bytes; the vault allows at most ${MAX_PAYLOAD_BYTES}.`,
     );
   }
 
-  const padded = new Uint8Array(PADDED_BYTES);
+  const size =
+    version === 1
+      ? PADDED_BYTES
+      : (V2_BUCKETS.find((bucket) => json.length + LENGTH_BYTES <= bucket) ?? PADDED_BYTES);
+  const padded = new Uint8Array(size);
   new DataView(padded.buffer).setUint32(0, json.length, false);
-  padded.set(json, 4);
+  padded.set(json, LENGTH_BYTES);
   return padded;
 }
 
 /**
  * Reverses {@link padPayload}.
  *
- * @param padded - Fixed-size plaintext buffer.
+ * @param padded - Padded plaintext buffer.
+ * @param version - Vault format the padding came from.
  * @returns The JSON text inside.
  */
-export function unpadPayload(padded: Uint8Array): string {
-  if (padded.length !== PADDED_BYTES) {
+export function unpadPayload(padded: Uint8Array, version: VaultVersion = VAULT_VERSION): string {
+  const sizes: readonly number[] = version === 1 ? [PADDED_BYTES] : V2_BUCKETS;
+
+  if (!sizes.includes(padded.length)) {
     throw new VaultError('bad-blob', 'Decrypted payload has the wrong size.');
   }
 
@@ -199,11 +261,13 @@ export function unpadPayload(padded: Uint8Array): string {
     false,
   );
 
-  if (length > MAX_PAYLOAD_BYTES) {
+  if (length > padded.length - LENGTH_BYTES) {
     throw new VaultError('bad-blob', 'Decrypted payload has an invalid length.');
   }
 
-  return new TextDecoder('utf-8', { fatal: true }).decode(padded.subarray(4, 4 + length));
+  return new TextDecoder('utf-8', { fatal: true }).decode(
+    padded.subarray(LENGTH_BYTES, LENGTH_BYTES + length),
+  );
 }
 
 /**
@@ -220,7 +284,7 @@ export function parseVaultBlob(input: unknown, minIterations = MIN_ITERATIONS): 
   if (
     typeof blob !== 'object' ||
     blob === null ||
-    blob.v !== VAULT_VERSION ||
+    (blob.v !== 1 && blob.v !== 2) ||
     blob.kdf?.name !== KDF_NAME ||
     typeof blob.kdf.iterations !== 'number' ||
     !isText(blob.kdf.salt) ||
@@ -244,7 +308,7 @@ async function decryptData(blob: VaultBlob, dek: CryptoKey): Promise<LoanProfile
       {
         name: 'AES-GCM',
         iv: fromBase64(blob.data.iv),
-        additionalData: aad(blob.kdf.iterations, blob.kdf.salt, 'data'),
+        additionalData: aad(blob.v, blob.kdf.iterations, blob.kdf.salt, 'data'),
       },
       dek,
       fromBase64(blob.data.ct),
@@ -254,7 +318,7 @@ async function decryptData(blob: VaultBlob, dek: CryptoKey): Promise<LoanProfile
   }
 
   try {
-    return parseLoanProfile(JSON.parse(unpadPayload(new Uint8Array(plaintext))));
+    return parseLoanProfile(JSON.parse(unpadPayload(new Uint8Array(plaintext), blob.v)));
   } catch (error) {
     if (error instanceof VaultError) {
       throw error;
@@ -307,9 +371,14 @@ function assertIterations(iterations: number, minIterations: number): void {
   }
 }
 
-function aad(iterations: number, salt: string, layer: 'wrap' | 'data'): Uint8Array<ArrayBuffer> {
+function aad(
+  version: VaultVersion,
+  iterations: number,
+  salt: string,
+  layer: 'wrap' | 'data',
+): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(
-    [AAD_PREFIX, VAULT_VERSION, KDF_NAME, iterations, salt, layer].join('|'),
+    [AAD_PREFIX, version, KDF_NAME, iterations, salt, layer].join('|'),
   );
 }
 
@@ -327,7 +396,13 @@ function randomBytes(length: number): Uint8Array<ArrayBuffer> {
   return globalThis.crypto.getRandomValues(new Uint8Array(length));
 }
 
-function toBase64(bytes: Uint8Array): string {
+/**
+ * Encodes bytes as standard base64.
+ *
+ * @param bytes - Bytes to encode.
+ * @returns Base64 text.
+ */
+export function toBase64(bytes: Uint8Array): string {
   let binary = '';
   bytes.forEach((byte) => {
     binary += String.fromCharCode(byte);
@@ -335,7 +410,13 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function fromBase64(text: string): Uint8Array<ArrayBuffer> {
+/**
+ * Decodes standard base64, failing as a bad blob on malformed text.
+ *
+ * @param text - Base64 text.
+ * @returns Decoded bytes.
+ */
+export function fromBase64(text: string): Uint8Array<ArrayBuffer> {
   let binary: string;
 
   try {

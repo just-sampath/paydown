@@ -10,8 +10,10 @@ import {
   openBlobWithKey,
   PADDED_BYTES,
   padPayload,
+  resealData,
   sealProfile,
   unpadPayload,
+  V2_BUCKETS,
   VaultError,
   type VaultBlob,
 } from '../../../src/features/vault/vaultCrypto';
@@ -115,6 +117,46 @@ describe('vault crypto', () => {
     await expect(openBlobWithKey(rotated, remembered, FAST)).rejects.toMatchObject({
       code: 'bad-passphrase',
     });
+  });
+
+  test('version 2 pads to the smallest size bucket that fits', async () => {
+    const small = await sealProfile(sampleLoan, PASSPHRASE, { ...FAST, version: 2 });
+    const large = await sealProfile(profileNearLimit(5_000), PASSPHRASE, { ...FAST, version: 2 });
+    const largest = await sealProfile(profileNearLimit(), PASSPHRASE, { ...FAST, version: 2 });
+
+    expect(small.v).toBe(2);
+    expect(decodedLength(small.data.ct)).toBe(V2_BUCKETS[0] + GCM_TAG_BYTES);
+    expect(decodedLength(large.data.ct)).toBe(8_192 + GCM_TAG_BYTES);
+    expect(decodedLength(largest.data.ct)).toBe(PADDED_BYTES + GCM_TAG_BYTES);
+    expect(padPayload(sampleLoan, 2)).toHaveLength(2_048);
+    expect(JSON.parse(unpadPayload(padPayload(sampleLoan, 2), 2))).toEqual(sampleLoan);
+    await expect(openBlob(large, PASSPHRASE, FAST)).resolves.toMatchObject({
+      profile: profileNearLimit(5_000),
+    });
+  });
+
+  test('binds the version, so a version 2 blob relabelled as version 1 does not open', async () => {
+    const blob = await sealProfile(sampleLoan, PASSPHRASE, { ...FAST, version: 2 });
+    const relabelled: VaultBlob = { ...blob, v: 1 };
+
+    await expect(openBlob(relabelled, PASSPHRASE, FAST)).rejects.toMatchObject({
+      code: 'bad-passphrase',
+    });
+  });
+
+  test('a writable key saves edits without the passphrase and stays non-extractable', async () => {
+    const blob = await sealProfile(sampleLoan, PASSPHRASE, { ...FAST, version: 2 });
+    const { dek } = await openBlob(blob, PASSPHRASE, { ...FAST, writable: true });
+    const edited: LoanProfile = { ...sampleLoan, meta: { ...sampleLoan.meta, name: 'Edited' } };
+    const saved = await resealData(edited, blob, dek);
+
+    expect(dek.extractable).toBe(false);
+    expect([...dek.usages].sort()).toEqual(['decrypt', 'encrypt']);
+    expect(saved.kdf).toEqual(blob.kdf);
+    expect(saved.wrap).toEqual(blob.wrap);
+    expect(saved.data.iv).not.toBe(blob.data.iv);
+    await expect(openBlobWithKey(saved, dek, FAST)).resolves.toEqual(edited);
+    await expect(openBlob(saved, PASSPHRASE, FAST)).resolves.toMatchObject({ profile: edited });
   });
 
   test('uses one million PBKDF2 iterations by default', async () => {
