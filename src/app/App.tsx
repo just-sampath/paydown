@@ -15,6 +15,7 @@ import { SettingsPage } from '../pages/SettingsPage';
 import { WhatIfPage } from '../pages/WhatIfPage';
 import { createIndexedDbKeyStore, type DeviceKeyStore } from './deviceKeyStore';
 import { loadAppearancePrefs, saveAppearancePrefs, type AppearancePrefs } from './storage';
+import { syncThemeColor } from './themeColor';
 import { useLoanData, type LoanData } from './useLoanData';
 import { AppLayout, type PageId } from '../components/Layout';
 import { getTodayIso } from '../utils/date';
@@ -76,6 +77,7 @@ export function App({
   useEffect(() => {
     document.documentElement.dataset.theme = prefs.theme;
     document.documentElement.dataset.palette = prefs.palette === 'default' ? '' : prefs.palette;
+    syncThemeColor();
     saveAppearancePrefs(prefs);
   }, [prefs]);
 
