@@ -2,6 +2,8 @@
 
 Paydown is a Vite + React dashboard for tracking a floating-rate home loan in INR. It models the current payoff path, rate revisions, part payments, and alternate what-if scenarios from a fixed EMI / tenure-reduction perspective.
 
+**Live:** [just-sampath.github.io/paydown](https://just-sampath.github.io/paydown/) (shows the sample loan)
+
 ## What It Tracks
 
 - Dashboard summary for outstanding balance, months saved, interest saved, current rate, and next EMI.
@@ -38,36 +40,19 @@ See `docs/vault.md` for the format, threat model, CLI commands and the leak chec
 - Vite 8
 - TypeScript
 - Tailwind CSS 4
-- Recharts
+- Hand-drawn SVG charts (no chart library)
 - Vitest + jsdom
 - Bun for dependency installation and scripts
 
 ## Local Development
 
-Install dependencies:
-
 ```bash
 bun install
-```
-
-Start the dev server:
-
-```bash
-bun run dev
-```
-
-Run the app checks:
-
-```bash
+bun run dev        # start Vite on 127.0.0.1
 bun run lint
 bun run test
 bun run build
-```
-
-Preview the production build:
-
-```bash
-bun run preview
+bun run preview    # serve the production build
 ```
 
 ## Scripts
@@ -104,54 +89,8 @@ docs/calculations.md     Calculation audit and external source notes
 docs/vault.md            Encrypted data set design and CLI
 ```
 
-## GitHub Pages Deployment
+## Deployment
 
-This repo includes `.github/workflows/deploy-pages.yml` for GitHub Pages deployment through GitHub Actions. The workflow is built for this project rather than the npm example pattern:
+`.github/workflows/deploy-pages.yml` deploys every push to `main` to GitHub Pages. It installs with `bun install --frozen-lockfile`, runs the plaintext guard, lint, tests and the production build, then publishes `dist/`. In the repo settings, Pages must use GitHub Actions as its source.
 
-- It uses `oven-sh/setup-bun@v2` because the repo has `bun.lock`.
-- It installs with `bun install --frozen-lockfile`.
-- It runs the plaintext guard, lint, tests, and the Vite production build before deployment.
-- It uploads the Vite `dist` directory as the Pages artifact.
-- It deploys through the `github-pages` environment with the required Pages/OIDC permissions.
-
-The Vite base path is already set in `vite.config.ts`:
-
-```ts
-base: process.env.BASE_PATH ?? '/paydown/';
-```
-
-That matches the default project Pages URL:
-
-```text
-https://<owner>.github.io/paydown/
-```
-
-If this repo is deployed as an organization/user Pages site, or behind a custom domain at the domain root, set `BASE_PATH=/` in the workflow and update `vite.config.ts` defaults if needed.
-
-### GitHub Repository Setup
-
-1. Push this repository to GitHub on the `main` branch.
-2. In GitHub, open `Settings` -> `Pages`.
-3. Under `Build and deployment`, set `Source` to `GitHub Actions`.
-4. Push to `main` or run the `Deploy to GitHub Pages` workflow manually from the Actions tab.
-
-No `gh-pages` branch is required for this workflow.
-
-### Deployment Research Notes
-
-The workflow follows GitHub's current custom Pages workflow model:
-
-- GitHub Pages can publish from a custom GitHub Actions workflow instead of a branch source.
-- The expected flow is checkout, build static files, upload the static output with `actions/upload-pages-artifact`, then deploy it with `actions/deploy-pages`.
-- `actions/configure-pages` supplies Pages metadata and static-generator support.
-- The deploy job needs `pages: write` and `id-token: write` permissions, should depend on the build job, and should target the `github-pages` environment.
-- `actions/upload-pages-artifact` handles the Pages artifact packaging requirements and defaults the artifact name to `github-pages`.
-- For Bun projects, `oven-sh/setup-bun@v2` is the setup action used before `bun install`.
-
-Sources:
-
-- [Configuring a publishing source for GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
-- [Using custom workflows with GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
-- [actions/deploy-pages](https://github.com/actions/deploy-pages)
-- [actions/upload-pages-artifact](https://github.com/actions/upload-pages-artifact)
-- [oven-sh/setup-bun](https://github.com/oven-sh/setup-bun)
+The site is served under `/paydown/` (`base` in `vite.config.ts`). To serve it from a domain root instead, set `BASE_PATH=/` in the workflow.
