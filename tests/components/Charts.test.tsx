@@ -148,3 +148,45 @@ describe('dashboard charts', () => {
     expect(rates).toMatch(/d="M [^"]* H [^"]* V /);
   });
 });
+
+describe('chart width', () => {
+  test('a chart in a nearly empty box keeps every shape a valid size', () => {
+    class TinyResizeObserver {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element): void {
+        this.callback(
+          [{ target, contentRect: { width: 10 } } as unknown as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        );
+      }
+      disconnect(): void {}
+      unobserve(): void {}
+    }
+    vi.stubGlobal('ResizeObserver', TinyResizeObserver);
+
+    const charts = [
+      <BalanceChart key="balance" analysis={analysis} />,
+      <YearlyChart key="yearly" currentYear={2026} years={analysis.yearlyActual} />,
+      <RateHistoryChart
+        key="rates"
+        analysis={analysis}
+        rateChanges={sampleLoan.loan.rateChanges}
+      />,
+    ];
+    for (const chart of charts) {
+      const view = render(chart);
+      const sizes = Array.from(view.container.querySelectorAll('svg, svg *')).flatMap((node) =>
+        ['width', 'height']
+          .map((name) => node.getAttribute(name))
+          .filter((value): value is string => value !== null && !value.endsWith('%'))
+          .map(Number),
+      );
+
+      expect(view.container.querySelector('svg')?.getAttribute('width')).toBe('200');
+      expect(sizes.every((size) => Number.isFinite(size) && size >= 0)).toBe(true);
+      view.cleanup();
+    }
+
+    vi.unstubAllGlobals();
+  });
+});

@@ -1,6 +1,13 @@
 import { useLayoutEffect, useState } from 'react';
 
 /**
+ * Narrowest width a chart is drawn at. A hidden or collapsed box can measure only a few
+ * pixels, which would leave less room than the axis padding and give shapes negative
+ * sizes. The SVG scales to its box, so drawing wider than the box never overflows.
+ */
+export const MIN_CHART_WIDTH = 200;
+
+/**
  * Measures the width of a chart container so the SVG can be drawn at 1:1 scale.
  *
  * Drawing at the real pixel width keeps axis text at its CSS size on a phone instead of
@@ -21,7 +28,7 @@ export function useChartWidth(fallback: number) {
 
     const measure = (next: number): void => {
       if (next > 0) {
-        setWidth(Math.round(next));
+        setWidth(Math.max(Math.round(next), MIN_CHART_WIDTH));
       }
     };
     const observer = new ResizeObserver((entries) => measure(entries[0]?.contentRect.width ?? 0));
